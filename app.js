@@ -68,6 +68,7 @@ const state = {
     weekly: ["cost", "ctr", null],
     monthly: ["cost", "ctr", null],
   },
+  homeDailyMetrics: ["cost", "ctr", null],
   activePreset: null,
   showAnomalyMarkers: false,
   promotionViewFilter: [],
@@ -1104,44 +1105,28 @@ function widgetHtml(id, jiggle) {
         </header>
         <div id="homeMediaChart" class="chart pie-chart"></div>
       </article>`;
-    case 'daily-trend': return `
+    case 'daily-trend': {
+      const hdMetrics = state.homeDailyMetrics;
+      const hdSelectors = [0, 1, 2].map((i) => {
+        const cur   = hdMetrics[i] ?? null;
+        const color = COMBO_SLOT_COLORS[i];
+        return `<div class="report-combo-selector-item">
+          <span class="combo-slot-dot" style="background:${color}"></span>
+          <select class="home-daily-metric-select report-metric-select" data-home-daily-slot="${i}">
+            ${reportMetricOptionsHtml(cur, true)}
+          </select>
+        </div>`;
+      }).join('');
+      return `
       <article class="panel chart-panel home-widget${spanClass}${jiggleClass}" ${drag}>
         ${deleteBtn}${sizeBar}
         <header>
-          <p>Daily Trend</p>
-          <div><h2>일자별 성과</h2><small class="basis" id="dailyBasis">기준: 선택 지표 일자별 집계</small></div>
-          <div class="chart-header-right">
-            <div class="metric-control-bar metric-control-bar--daily">
-              <label for="metricSelect">기준 지표</label>
-              <select id="metricSelect" class="metric-control-select" data-primary-metric-select></select>
-              <label for="secondaryMetricSelect">비교 지표</label>
-              <select id="secondaryMetricSelect" class="metric-control-select"></select>
-            </div>
-            <label class="toggle-switch anomaly-side-toggle">
-              <input type="checkbox" id="toggleAnomalyBtn">
-              <span class="toggle-slider"></span>
-              <span class="toggle-label-text">전일자 대비<br>증감율 표기</span>
-            </label>
-            <div class="chart-tools">
-              <div class="metric-switcher">
-                <button type="button" class="metric-button is-active" data-metric="impressions">노출</button>
-                <button type="button" class="metric-button" data-metric="clicks">클릭</button>
-                <button type="button" class="metric-button" data-metric="cost">비용</button>
-                <button type="button" class="metric-button" data-metric="purchases">전환</button>
-                <button type="button" class="metric-button" data-metric="revenue">매출</button>
-              </div>
-              <div class="metric-switcher efficiency-switcher">
-                <button type="button" class="efficiency-button" data-secondary-metric="ctr">CTR</button>
-                <button type="button" class="efficiency-button" data-secondary-metric="cpc">CPC</button>
-                <button type="button" class="efficiency-button" data-secondary-metric="cvr">CVR</button>
-                <button type="button" class="efficiency-button" data-secondary-metric="cpa">CPA</button>
-                <button type="button" class="efficiency-button" data-secondary-metric="roas">ROAS</button>
-              </div>
-            </div>
-          </div>
+          <div><p>Daily Trend</p><h2>일자별 트렌드</h2></div>
+          <div class="report-combo-selectors">${hdSelectors}</div>
         </header>
-        <div id="dailyChart" class="chart combo-chart"></div>
+        <div id="dailyChart" class="chart report-chart report-chart--combo"></div>
       </article>`;
+    }
     case 'insights': return `
       <article class="panel list-panel home-widget${spanClass}${jiggleClass}" ${drag}>
         ${deleteBtn}${sizeBar}
@@ -1372,11 +1357,16 @@ function bindWidgetDrag(grid, rows) {
 /* 홈 차트 렌더링 (위젯 재생성 후 호출) */
 function renderChartsForHome(rows) {
   const dateRows = aggregateDateRows(rows);
-  const prevDateRows = aggregateDateRows(previousPeriodRows());
   if (document.querySelector('#dailyChart')) {
-    const el = document.querySelector('#dailyBasis');
-    if (el) el.textContent = `기준: ${metricMeta[state.metric]?.basis} · 일자별 집계`;
-    renderDailyComboChart(document.querySelector('#dailyChart'), dateRows, state.metric, prevDateRows.length ? prevDateRows : null);
+    renderPeriodComboChart(document.querySelector('#dailyChart'), dateRows, state.homeDailyMetrics, 'daily');
+    /* 홈 일자별 지표 셀렉터 이벤트 */
+    document.querySelectorAll('.home-daily-metric-select').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        const slot = Number(e.target.dataset.homeDailySlot);
+        state.homeDailyMetrics[slot] = e.target.value || null;
+        renderChartsForHome(filteredRecords());
+      });
+    });
   }
   if (document.querySelector('#homeMediaChart')) {
     renderPieChart(document.querySelector('#homeMediaChart'), aggregate(rows, 'media'), state.metric);
