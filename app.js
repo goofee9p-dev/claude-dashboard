@@ -1066,6 +1066,23 @@ function loadHomeWidgets() {
   catch { return [...DEFAULT_WIDGET_ORDER]; }
 }
 function saveHomeWidgets() { localStorage.setItem('zinus-home-widgets', JSON.stringify(state.homeWidgetOrder)); }
+
+/* 사용자 기본값 저장 / 불러오기 (완료 버튼 클릭 시 저장, 초기화 시 복원) */
+const USER_DEFAULT_KEY = 'zinus-home-user-default';
+function saveUserDefault() {
+  localStorage.setItem(USER_DEFAULT_KEY, JSON.stringify({
+    widgets:     [...state.homeWidgetOrder],
+    widgetSizes: { ...state.homeWidgetSizes },
+    kpiOrder:    [...state.kpiOrder],
+  }));
+}
+function loadUserDefault() {
+  try {
+    const v = JSON.parse(localStorage.getItem(USER_DEFAULT_KEY));
+    if (v && Array.isArray(v.widgets)) return v;
+  } catch {}
+  return { widgets: [...DEFAULT_WIDGET_ORDER], widgetSizes: {}, kpiOrder: [...KPI_ALL_KEYS] };
+}
 function loadKpiOrder() {
   try { const v = JSON.parse(localStorage.getItem('zinus-kpi-order')); return Array.isArray(v) ? v : [...KPI_ALL_KEYS]; }
   catch { return [...KPI_ALL_KEYS]; }
@@ -1100,11 +1117,13 @@ function widgetHtml(id, jiggle) {
         <header>
           <p>Media Overview</p>
           <div><h2>매체별 성과</h2><small class="basis">기준: 선택 지표 기준 비중</small></div>
-          <div class="metric-control-bar metric-control-bar--single">
-            <label for="homeMediaMetricSelect">성과 지표</label>
-            <select id="homeMediaMetricSelect" class="metric-control-select">
-              ${reportMetricOptionsHtml(state.homeMediaMetric, false)}
-            </select>
+          <div class="report-combo-selectors">
+            <div class="report-combo-selector-item">
+              <span class="combo-slot-dot" style="background:${COMBO_SLOT_COLORS[0]}"></span>
+              <select id="homeMediaMetricSelect" class="report-metric-select">
+                ${reportMetricOptionsHtml(state.homeMediaMetric, false)}
+              </select>
+            </div>
           </div>
         </header>
         <div id="homeMediaChart" class="chart pie-chart"></div>
@@ -1169,25 +1188,29 @@ function renderJiggleBar() {
   bar.innerHTML = `
     <div class="home-jiggle-bar">
       <button type="button" class="jiggle-bar-btn jiggle-bar-reset" id="jiggleResetBtn">↺ 초기화</button>
-      <span class="jiggle-bar-label">편집 모드 · 꾹 누르기로 편집</span>
+      <span class="jiggle-bar-label">편집 모드 · 완료 시 기본값 저장</span>
       <button type="button" class="jiggle-bar-btn jiggle-bar-done" id="jiggleDoneBtn">완료</button>
     </div>`;
 
+  /* 초기화: 마지막으로 저장된 사용자 기본값으로 복원 */
   document.querySelector('#jiggleResetBtn').addEventListener('click', () => {
-    state.kpiOrder = [...KPI_ALL_KEYS];
-    state.homeWidgetOrder = [...DEFAULT_WIDGET_ORDER];
-    state.homeWidgetSizes = {};
-    state.homeEditMode = false;
-    state.kpiJiggle = false;
-    saveKpiOrder();
+    const def = loadUserDefault();
+    state.homeWidgetOrder = def.widgets;
+    state.homeWidgetSizes = def.widgetSizes;
+    state.kpiOrder        = def.kpiOrder;
+    state.homeEditMode    = false;
+    state.kpiJiggle       = false;
     saveHomeWidgets();
     saveWidgetSizes();
+    saveKpiOrder();
     renderAll();
   });
 
+  /* 완료: 현재 상태를 기본값으로 저장 후 편집 종료 */
   document.querySelector('#jiggleDoneBtn').addEventListener('click', () => {
+    saveUserDefault();
     state.homeEditMode = false;
-    state.kpiJiggle = false;
+    state.kpiJiggle    = false;
     renderAll();
   });
 }
