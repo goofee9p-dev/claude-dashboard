@@ -1168,8 +1168,44 @@ function widgetAddPanelHtml(activeWidgets) {
     </button>`).join('');
 }
 
+/* 지글 바 (편집 모드 진입 시 상단에 나타나는 완료/초기화 바) */
+function renderJiggleBar() {
+  const bar = document.querySelector('#homeJiggleBar');
+  if (!bar) return;
+  const active = state.homeEditMode || state.kpiJiggle;
+  if (!active) {
+    bar.innerHTML = '';
+    return;
+  }
+  bar.innerHTML = `
+    <div class="home-jiggle-bar">
+      <button type="button" class="jiggle-bar-btn jiggle-bar-reset" id="jiggleResetBtn">↺ 초기화</button>
+      <span class="jiggle-bar-label">편집 모드 · 꾹 누르기로 편집</span>
+      <button type="button" class="jiggle-bar-btn jiggle-bar-done" id="jiggleDoneBtn">완료</button>
+    </div>`;
+
+  document.querySelector('#jiggleResetBtn').addEventListener('click', () => {
+    state.kpiOrder = [...KPI_ALL_KEYS];
+    state.homeWidgetOrder = [...DEFAULT_WIDGET_ORDER];
+    state.homeWidgetSizes = {};
+    state.homeEditMode = false;
+    state.kpiJiggle = false;
+    saveKpiOrder();
+    saveHomeWidgets();
+    saveWidgetSizes();
+    renderAll();
+  });
+
+  document.querySelector('#jiggleDoneBtn').addEventListener('click', () => {
+    state.homeEditMode = false;
+    state.kpiJiggle = false;
+    renderAll();
+  });
+}
+
 /* 홈 위젯 렌더링 (iOS 지글 모드) */
 function renderHomeWidgets(rows) {
+  renderJiggleBar();
   const grid = document.querySelector('#homeWidgets');
   if (!grid) return;
   const jiggle = state.homeEditMode;
@@ -1451,6 +1487,7 @@ const KPI_ITEM_MAP = (totals, prevTotals) => ({
 });
 
 function renderKpis(rows) {
+  renderJiggleBar();
   const totals = aggregateTotals(rows);
   const prevRows = previousPeriodRows();
   const prevTotals = prevRows.length ? aggregateTotals(prevRows) : null;
