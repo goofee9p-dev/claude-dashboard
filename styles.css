@@ -1264,9 +1264,9 @@ body {
 
 /* ── iOS 지글 모드 (꾹 누르기) ──────────────────────────────── */
 @keyframes jiggle {
-  0%   { transform: rotate(-0.5deg); }
-  50%  { transform: rotate(0.5deg);  }
-  100% { transform: rotate(-0.5deg); }
+  0%   { transform: rotate(-0.25deg); }
+  50%  { transform: rotate(0.25deg);  }
+  100% { transform: rotate(-0.25deg); }
 }
 
 .home-widget.is-jiggling {
