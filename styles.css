@@ -1478,6 +1478,27 @@ body {
   font-weight: 700;
 }
 
+/* 위젯 없을 때 빈 상태 안내 */
+.widget-empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.widget-empty-state:hover {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+
 /* home-camp-table */
 .home-camp-table-wrap {
   overflow-x: auto;

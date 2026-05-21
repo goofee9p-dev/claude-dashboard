@@ -1215,8 +1215,13 @@ function renderHomeWidgets(rows) {
       ${widgetAddPanelHtml(state.homeWidgetOrder)}
     </div>` : '';
 
+  /* 위젯이 하나도 없을 때: 편집 모드가 아니면 빈 상태 안내 표시 */
+  const emptyState = (!jiggle && state.homeWidgetOrder.length === 0)
+    ? `<div class="widget-empty-state span-3">꾹 눌러서 위젯을 추가하세요</div>`
+    : '';
+
   grid.innerHTML =
-    state.homeWidgetOrder.map((id) => widgetHtml(id, jiggle)).join('') + addPanel;
+    state.homeWidgetOrder.map((id) => widgetHtml(id, jiggle)).join('') + addPanel + emptyState;
 
   /* 위젯 삭제 */
   grid.querySelectorAll('[data-remove-widget]').forEach((btn) => {
@@ -1294,7 +1299,10 @@ function reRenderHome(rows) {
 function bindLongPress(grid, rows) {
   if (state.homeEditMode) return;
   let timer = null;
-  grid.querySelectorAll('.home-widget').forEach((el) => {
+  /* 위젯이 있으면 각 위젯에, 없으면 그리드 자체에 바인딩 */
+  const targets = grid.querySelectorAll('.home-widget, .widget-empty-state');
+  const bindTargets = targets.length > 0 ? targets : [grid];
+  bindTargets.forEach((el) => {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 && e.button !== undefined) return;
       timer = setTimeout(() => {
