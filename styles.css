@@ -1657,58 +1657,61 @@ input {
 /* ─── Insights ────────────────────────────────────────────── */
 
 .insights {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  /* 텍스트 리스트 래퍼 */
+}
+
+.insight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.insight-card {
-  padding: 12px 14px;
-  border-left: 3px solid var(--ic, var(--mint));
-  border-radius: 8px;
-  background: var(--panel);
-  border-top: 1px solid var(--line);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+.insight-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 10px;
+  line-height: 1.6;
+  font-size: 13.5px;
+  color: var(--ink);
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
 }
 
-.ic-badge {
-  display: inline-block;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  color: var(--ic, var(--mint));
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.ic-value {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--text);
-  line-height: 1.1;
-  margin-bottom: 2px;
-}
-
-.ic-label {
+.insight-tag {
+  flex-shrink: 0;
   font-size: 10px;
-  color: var(--text-muted);
-  margin: 0 0 4px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  line-height: 1.8;
 }
 
-.ic-name {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--strong);
-}
-
-.ic-detail {
-  font-size: 11px;
+.insight-text {
+  flex: 1;
+  min-width: 0;
   color: var(--muted);
+  font-size: 13px;
+}
+
+/* 핵심 숫자 강조 */
+.in-num {
+  font-weight: 800;
+  color: var(--strong);
+  font-style: normal;
+}
+
+/* 프로모션·매체 이름 강조 */
+.in-name {
+  font-weight: 700;
+  font-style: normal;
+  color: var(--ink);
 }
 
 /* ─── Charts ──────────────────────────────────────────────── */

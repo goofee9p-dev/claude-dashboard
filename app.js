@@ -1593,62 +1593,50 @@ function renderInsights(rows) {
   const bestClicks  = byMedia.sort((a, b) => b.clicks - a.clicks)[0];
   const bestTarget  = byTarget.filter((i) => i.cost > 0).sort((a, b) => b.revenue - a.revenue)[0];
 
-  const cards = [
-    {
-      badge: "ROAS",  color: "#2ec4b6",
-      value: bestRoas   ? formatRoas(bestRoas.roas)       : "-",
-      label: "최고 ROAS 프로모션",
-      name:  bestRoas?.name  ?? "-",
-      detail: bestRoas  ? `매출 ${formatCompactMoney(bestRoas.revenue)}원` : "",
-    },
-    {
-      badge: "매출",  color: "#3a86ff",
-      value: bestRevenue ? formatCompactMoney(bestRevenue.revenue) + "원" : "-",
-      label: "매출 1위 프로모션",
-      name:  bestRevenue?.name ?? "-",
-      detail: bestRevenue ? `구매 ${formatNumber(bestRevenue.purchases)}건` : "",
-    },
-    {
-      badge: "CPA",   color: "#8338ec",
-      value: lowCpa   ? formatCompactMoney(lowCpa.cpa) + "원"   : "-",
-      label: "CPA 최저 프로모션",
-      name:  lowCpa?.name   ?? "-",
-      detail: lowCpa  ? `구매 ${formatNumber(lowCpa.purchases)}건` : "",
-    },
-    {
-      badge: "CTR",   color: "#00b894",
-      value: bestCtr  ? formatPercent(bestCtr.ctr)       : "-",
-      label: "CTR 최고 매체",
-      name:  bestCtr?.name  ?? "-",
-      detail: bestCtr ? `클릭 ${formatNumber(bestCtr.clicks)}회` : "",
-    },
-    {
-      badge: "클릭",  color: "#e17055",
-      value: bestClicks ? formatNumber(bestClicks.clicks) : "-",
-      label: "클릭 1위 매체",
-      name:  bestClicks?.name ?? "-",
-      detail: bestClicks ? `CTR ${formatPercent(bestClicks.ctr)}` : "",
-    },
-    {
-      badge: "타겟",  color: "#fd79a8",
-      value: bestTarget ? formatCompactMoney(bestTarget.revenue) + "원" : "-",
-      label: "매출 1위 타겟",
-      name:  bestTarget?.name ?? "-",
-      detail: bestTarget ? `ROAS ${formatRoas(bestTarget.roas)}` : "",
-    },
-  ];
+  /* 핵심 숫자 강조 헬퍼 */
+  const n  = (v) => `<strong class="in-num">${v}</strong>`;
+  const nm = (v) => `<em class="in-name">${escapeHtml(truncate(String(v), 20))}</em>`;
 
-  document.querySelector("#insights").innerHTML = cards
-    .map(({ badge, color, value, label, name, detail }) => `
-      <article class="insight-card" style="--ic:${color}">
-        <span class="ic-badge">${escapeHtml(badge)}</span>
-        <div class="ic-value">${escapeHtml(value)}</div>
-        <p class="ic-label">${escapeHtml(label)}</p>
-        <strong class="ic-name" title="${escapeHtml(name)}">${escapeHtml(truncate(name, 22))}</strong>
-        <small class="ic-detail">${escapeHtml(detail)}</small>
-      </article>
-    `)
-    .join("");
+  const lines = [
+    bestRoas ? {
+      color: "#2ec4b6",
+      tag: "ROAS",
+      text: `프로모션 중 ${nm(bestRoas.name)}의 ROAS가 ${n(formatRoas(bestRoas.roas))}로 가장 높습니다. 매출 ${n(formatCompactMoney(bestRoas.revenue) + "원")}.`,
+    } : null,
+    bestRevenue ? {
+      color: "#3a86ff",
+      tag: "매출",
+      text: `매출 최다 프로모션은 ${nm(bestRevenue.name)}으로 ${n(formatCompactMoney(bestRevenue.revenue) + "원")}을 기록했습니다. 구매 ${n(formatNumber(bestRevenue.purchases) + "건")}.`,
+    } : null,
+    lowCpa ? {
+      color: "#8338ec",
+      tag: "CPA",
+      text: `전환 효율이 가장 좋은 프로모션은 ${nm(lowCpa.name)}입니다. CPA ${n(formatMoney(lowCpa.cpa))}, 전환 ${n(formatNumber(lowCpa.purchases) + "건")}.`,
+    } : null,
+    bestCtr ? {
+      color: "#00b894",
+      tag: "CTR",
+      text: `클릭률이 가장 높은 매체는 ${nm(bestCtr.name)}으로 CTR ${n(formatPercent(bestCtr.ctr))}를 기록했습니다. 클릭 ${n(formatNumber(bestCtr.clicks) + "회")}.`,
+    } : null,
+    bestClicks ? {
+      color: "#e17055",
+      tag: "클릭",
+      text: `${nm(bestClicks.name)} 매체에서 클릭 ${n(formatNumber(bestClicks.clicks) + "회")}로 가장 많은 유입이 발생했습니다. CTR ${n(formatPercent(bestClicks.ctr))}.`,
+    } : null,
+    bestTarget ? {
+      color: "#fd79a8",
+      tag: "타겟",
+      text: `${nm(bestTarget.name)} 타겟에서 매출 ${n(formatCompactMoney(bestTarget.revenue) + "원")}으로 타겟 중 성과가 가장 높습니다. ROAS ${n(formatRoas(bestTarget.roas))}.`,
+    } : null,
+  ].filter(Boolean);
+
+  document.querySelector("#insights").innerHTML = `<ul class="insight-list">${
+    lines.map(({ color, tag, text }) => `
+      <li class="insight-item">
+        <span class="insight-tag" style="background:${color}20;color:${color}">${escapeHtml(tag)}</span>
+        <span class="insight-text">${text}</span>
+      </li>`).join("")
+  }</ul>`;
 }
 
 /* ── Chart Helpers ───────────────────────────────────────────── */
