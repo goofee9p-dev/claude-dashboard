@@ -1963,7 +1963,7 @@ function renderPieChart(container, rows, metric) {
   const centerLbl = escapeHtml(metricMeta[metric]?.label ?? "");
   const legend = slices.map((s) => {
     const pct = ((s.value / total) * 100).toFixed(1);
-    const name = escapeHtml(truncate(String(s.row.name || "-"), 22));
+    const name = escapeHtml(truncate(String(s.row.name || "-"), 16));
     const val = escapeHtml(formatShort(s.value, metric));
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
       <span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:${s.color};display:inline-block;"></span>
@@ -1972,13 +1972,13 @@ function renderPieChart(container, rows, metric) {
       <span style="flex-shrink:0;font-size:12px;font-weight:700;color:var(--text);min-width:38px;text-align:right;">${pct}%</span>
     </div>`;
   }).join("");
-  container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0;">
-    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+  container.innerHTML = `<div style="display:flex;flex-direction:row;align-items:center;gap:14px;padding:4px 0;height:100%;">
+    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="flex-shrink:0;">
       ${paths}
       <text x="${cx}" y="${cy - 8}" text-anchor="middle" style="font-size:10px;fill:var(--muted)">${centerLbl}</text>
       <text x="${cx}" y="${cy + 11}" text-anchor="middle" style="font-size:16px;font-weight:700;fill:var(--text)">${centerVal}</text>
     </svg>
-    <div style="width:100%;">${legend}</div>
+    <div style="flex:1;min-width:0;">${legend}</div>
   </div>`;
   container.querySelectorAll("path[data-media]").forEach((path) => {
     path.addEventListener("click", () => {
