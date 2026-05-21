@@ -49,8 +49,8 @@ body {
 .app-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 216px;
-  padding: 24px 14px;
+  width: 298px;
+  padding: 24px 16px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   z-index: 20;
@@ -67,7 +67,7 @@ body {
 
 .sidebar-title strong {
   color: var(--sidebar-strong);
-  font-size: 21px;
+  font-size: 23px;
 }
 
 .sidebar-title span {
@@ -88,10 +88,10 @@ body {
   background: transparent;
   color: var(--sidebar-text);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
   text-align: left;
-  padding: 0 12px;
+  padding: 0 14px;
   cursor: pointer;
   border-radius: 8px;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -190,8 +190,8 @@ body {
 /* ─── Main shell ──────────────────────────────────────────── */
 
 .dashboard-shell {
-  width: calc(100% - 216px);
-  margin: 0 0 0 216px;
+  width: calc(100% - 298px);
+  margin: 0 0 0 298px;
   padding: 20px 24px 32px;
 }
 
@@ -1061,7 +1061,9 @@ body {
 }
 
 .metric-control-select {
-  width: 142px;
+  flex: 1 1 auto;
+  min-width: 100px;
+  max-width: 180px;
   height: 30px;
   border-radius: 6px;
   border: 1px solid #dfe7eb;
@@ -1079,7 +1081,8 @@ body {
 }
 
 .metric-control-bar--single .metric-control-select {
-  width: 156px;
+  min-width: 110px;
+  max-width: 180px;
 }
 
 .metric-control-bar--daily {
@@ -1359,8 +1362,11 @@ input {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
   margin-bottom: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chart-panel header {
@@ -2015,8 +2021,8 @@ tbody tr:hover {
 
 .promotion-modal-panel {
   position: relative;
-  left: 216px;
-  width: min(480px, calc(100% - 216px - 40px));
+  left: 298px;
+  width: min(480px, calc(100% - 298px - 40px));
   max-height: calc(100vh - 48px);
   margin: 24px auto 24px 24px;
   background: var(--panel);
@@ -3080,7 +3086,7 @@ body {
 @media (min-width: 1101px) {
   .app-sidebar {
     inset: 32px auto 32px 32px;
-    width: 176px;
+    width: clamp(190px, 14vw, 240px);
     padding: 26px 14px 18px;
     border: 1px solid var(--sidebar-border);
     border-radius: 22px;
@@ -3090,7 +3096,7 @@ body {
   .dashboard-shell {
     width: auto;
     min-height: calc(100vh - 64px);
-    margin: 32px 32px 32px 232px;
+    margin: 32px 32px 32px calc(clamp(190px, 14vw, 240px) + 56px);
     padding: 18px 18px 24px;
     border: 1px solid rgba(255, 255, 255, 0.68);
     border-radius: 24px;
