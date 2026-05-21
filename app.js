@@ -64,13 +64,18 @@ const state = {
   brandMetric: "clicks",
   brandCreativeDevice: "all",
   reportMetrics: {
-    daily: ["cost", "revenue", "purchases"],
-    weekly: ["cpc", "revenue", "roas"],
-    monthly: ["cost", "revenue", "roas"],
+    daily: ["cost", "ctr", null],
+    weekly: ["cost", "ctr", null],
+    monthly: ["cost", "ctr", null],
   },
   activePreset: null,
   showAnomalyMarkers: false,
-  promotionViewFilter: [],   // [] = 전체, [...names] = 다중 선택
+  promotionViewFilter: [],
+  homeWidgetOrder: (() => { try { const v = JSON.parse(localStorage.getItem('zinus-home-widgets')); return Array.isArray(v) ? v : ['media-pie','daily-trend','insights']; } catch { return ['media-pie','daily-trend','insights']; } })(),
+  homeWidgetSizes: (() => { try { const v = JSON.parse(localStorage.getItem('zinus-widget-sizes')); return (v && typeof v === 'object') ? v : {}; } catch { return {}; } })(),
+  kpiOrder: (() => { try { const v = JSON.parse(localStorage.getItem('zinus-kpi-order')); return Array.isArray(v) ? v : ['impressions','clicks','cost','purchases','revenue','ctr','cpc','cvr','cpa','roas']; } catch { return ['impressions','clicks','cost','purchases','revenue','ctr','cpc','cvr','cpa','roas']; } })(),
+  homeEditMode: false,
+  kpiJiggle: false,
 };
 
 const homeMediaOptions = {
@@ -1041,79 +1046,451 @@ function kpiDeltaHtml(curr, prev, isPositiveGood = true) {
   return `<span class="kpi-delta ${cls}">${arrow} ${pct}% ${kpiCompareLabel()}</span>`;
 }
 
+/* ═══════════════════════════════════════════════════
+   홈 위젯 시스템
+═══════════════════════════════════════════════════ */
+const WIDGET_DEFS = {
+  'media-pie':   { label: '매체별 성과',       span: 1, tag: 'Media Overview' },
+  'daily-trend': { label: '일자별 트렌드',      span: 2, tag: 'Daily Trend' },
+  'insights':    { label: '요약 인사이트',      span: 3, tag: 'Key Findings' },
+  'camp-table':  { label: '캠페인/소재 테이블', span: 3, tag: 'Campaign' },
+};
+const DEFAULT_WIDGET_ORDER = ['media-pie', 'daily-trend', 'insights'];
+const KPI_ALL_KEYS = ['impressions', 'clicks', 'cost', 'purchases', 'revenue', 'ctr', 'cpc', 'cvr', 'cpa', 'roas'];
+
+function loadHomeWidgets() {
+  try { const v = JSON.parse(localStorage.getItem('zinus-home-widgets')); return Array.isArray(v) ? v : [...DEFAULT_WIDGET_ORDER]; }
+  catch { return [...DEFAULT_WIDGET_ORDER]; }
+}
+function saveHomeWidgets() { localStorage.setItem('zinus-home-widgets', JSON.stringify(state.homeWidgetOrder)); }
+function loadKpiOrder() {
+  try { const v = JSON.parse(localStorage.getItem('zinus-kpi-order')); return Array.isArray(v) ? v : [...KPI_ALL_KEYS]; }
+  catch { return [...KPI_ALL_KEYS]; }
+}
+function saveKpiOrder() { localStorage.setItem('zinus-kpi-order', JSON.stringify(state.kpiOrder)); }
+
+/* 위젯 크기 저장/불러오기 */
+function saveWidgetSizes() { localStorage.setItem('zinus-widget-sizes', JSON.stringify(state.homeWidgetSizes)); }
+function loadWidgetSizes() {
+  try { const v = JSON.parse(localStorage.getItem('zinus-widget-sizes')); return (v && typeof v === 'object') ? v : {}; }
+  catch { return {}; }
+}
+
+/* 위젯 HTML 템플릿 */
+function widgetHtml(id, jiggle) {
+  const def = WIDGET_DEFS[id];
+  if (!def) return '';
+  const userSpan = state.homeWidgetSizes?.[id] ?? def.span;
+  const spanClass = userSpan > 1 ? ` span-${userSpan}` : '';
+  const jiggleClass = jiggle ? ' is-jiggling' : '';
+  const deleteBtn = jiggle ? `<button type="button" class="widget-delete-btn" data-remove-widget="${escapeAttribute(id)}">×</button>` : '';
+  const sizeBar = jiggle ? `
+    <div class="widget-size-bar">
+      ${[1,2,3].map((s) => `<button type="button" class="widget-size-dot${userSpan === s ? ' active' : ''}" data-resize-widget="${escapeAttribute(id)}" data-size="${s}"></button>`).join('')}
+    </div>` : '';
+  const drag = jiggle ? `draggable="true" data-widget-id="${id}"` : `data-widget-id="${id}"`;
+
+  switch (id) {
+    case 'media-pie': return `
+      <article class="panel chart-panel home-widget${spanClass}${jiggleClass}" ${drag}>
+        ${deleteBtn}${sizeBar}
+        <header>
+          <p>Media Overview</p>
+          <div><h2>매체별 성과</h2><small class="basis">기준: 선택 지표 합계</small></div>
+          <div class="metric-control-bar metric-control-bar--single">
+            <label for="homeMetricSelect">성과 지표</label>
+            <select id="homeMetricSelect" class="metric-control-select" data-primary-metric-select></select>
+          </div>
+        </header>
+        <div id="homeMediaChart" class="chart pie-chart"></div>
+      </article>`;
+    case 'daily-trend': return `
+      <article class="panel chart-panel home-widget${spanClass}${jiggleClass}" ${drag}>
+        ${deleteBtn}${sizeBar}
+        <header>
+          <p>Daily Trend</p>
+          <div><h2>일자별 성과</h2><small class="basis" id="dailyBasis">기준: 선택 지표 일자별 집계</small></div>
+          <div class="chart-header-right">
+            <div class="metric-control-bar metric-control-bar--daily">
+              <label for="metricSelect">기준 지표</label>
+              <select id="metricSelect" class="metric-control-select" data-primary-metric-select></select>
+              <label for="secondaryMetricSelect">비교 지표</label>
+              <select id="secondaryMetricSelect" class="metric-control-select"></select>
+            </div>
+            <label class="toggle-switch anomaly-side-toggle">
+              <input type="checkbox" id="toggleAnomalyBtn">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label-text">전일자 대비<br>증감율 표기</span>
+            </label>
+            <div class="chart-tools">
+              <div class="metric-switcher">
+                <button type="button" class="metric-button is-active" data-metric="impressions">노출</button>
+                <button type="button" class="metric-button" data-metric="clicks">클릭</button>
+                <button type="button" class="metric-button" data-metric="cost">비용</button>
+                <button type="button" class="metric-button" data-metric="purchases">전환</button>
+                <button type="button" class="metric-button" data-metric="revenue">매출</button>
+              </div>
+              <div class="metric-switcher efficiency-switcher">
+                <button type="button" class="efficiency-button" data-secondary-metric="ctr">CTR</button>
+                <button type="button" class="efficiency-button" data-secondary-metric="cpc">CPC</button>
+                <button type="button" class="efficiency-button" data-secondary-metric="cvr">CVR</button>
+                <button type="button" class="efficiency-button" data-secondary-metric="cpa">CPA</button>
+                <button type="button" class="efficiency-button" data-secondary-metric="roas">ROAS</button>
+              </div>
+            </div>
+          </div>
+        </header>
+        <div id="dailyChart" class="chart combo-chart"></div>
+      </article>`;
+    case 'insights': return `
+      <article class="panel list-panel home-widget${spanClass}${jiggleClass}" ${drag}>
+        ${deleteBtn}${sizeBar}
+        <header><p>Key Findings</p><h2>요약 인사이트</h2></header>
+        <div class="insights" id="insights"></div>
+      </article>`;
+    case 'camp-table': return `
+      <article class="panel table-panel home-widget${spanClass}${jiggleClass}" ${drag}>
+        ${deleteBtn}${sizeBar}
+        <header><p>Campaign</p><h2>캠페인/소재 성과</h2></header>
+        <div id="homeWidgetCampTable" class="home-camp-table-wrap"></div>
+      </article>`;
+    default: return '';
+  }
+}
+
+/* 위젯 추가 패널 HTML */
+function widgetAddPanelHtml(activeWidgets) {
+  const available = Object.entries(WIDGET_DEFS).filter(([id]) => !activeWidgets.includes(id));
+  if (!available.length) return '';
+  return available.map(([id, def]) => `
+    <button type="button" class="widget-add-chip" data-add-widget="${escapeAttribute(id)}">
+      <span class="widget-add-plus">+</span>${def.label}
+    </button>`).join('');
+}
+
+/* 홈 위젯 렌더링 (iOS 지글 모드) */
+function renderHomeWidgets(rows) {
+  const grid = document.querySelector('#homeWidgets');
+  if (!grid) return;
+  const jiggle = state.homeEditMode;
+
+  const addPanel = jiggle ? `
+    <div class="widget-add-panel span-3">
+      ${widgetAddPanelHtml(state.homeWidgetOrder)}
+    </div>` : '';
+
+  grid.innerHTML =
+    state.homeWidgetOrder.map((id) => widgetHtml(id, jiggle)).join('') + addPanel;
+
+  /* 위젯 삭제 */
+  grid.querySelectorAll('[data-remove-widget]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.removeWidget;
+      state.homeWidgetOrder = state.homeWidgetOrder.filter((w) => w !== id);
+      saveHomeWidgets();
+      reRenderHome(rows);
+    });
+  });
+
+  /* 위젯 크기 변경 */
+  grid.querySelectorAll('[data-resize-widget]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.resizeWidget;
+      const size = Number(btn.dataset.size);
+      state.homeWidgetSizes[id] = size;
+      saveWidgetSizes();
+      reRenderHome(rows);
+    });
+  });
+
+  /* 위젯 추가 */
+  grid.querySelectorAll('[data-add-widget]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.addWidget;
+      if (!state.homeWidgetOrder.includes(id)) {
+        state.homeWidgetOrder.push(id);
+        saveHomeWidgets();
+        reRenderHome(rows);
+      }
+    });
+  });
+
+  /* 지글 모드: 드래그 정렬 바인딩 */
+  if (jiggle) bindWidgetDrag(grid, rows);
+
+  /* 지글 모드: 외부 클릭하면 종료 */
+  if (jiggle) {
+    const exitHandler = (e) => {
+      if (!grid.contains(e.target)) {
+        state.homeEditMode = false;
+        reRenderHome(rows);
+        document.removeEventListener('pointerdown', exitHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('pointerdown', exitHandler), 100);
+  }
+
+  /* 지글 모드: Escape로 종료 */
+  const escHandler = (e) => {
+    if (e.key === 'Escape' && state.homeEditMode) {
+      state.homeEditMode = false;
+      reRenderHome(rows);
+    }
+  };
+  document.addEventListener('keydown', escHandler, { once: true });
+
+  rebindHomeControls();
+
+  /* 꾹 누르기 감지 (지글 진입) */
+  bindLongPress(grid, rows);
+}
+
+function reRenderHome(rows) {
+  renderHomeWidgets(rows);
+  rebindHomeControls();
+  renderChartsForHome(rows);
+}
+
+/* 꾹 누르기 → 지글 모드 진입 */
+function bindLongPress(grid, rows) {
+  if (state.homeEditMode) return;
+  let timer = null;
+  grid.querySelectorAll('.home-widget').forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.button !== undefined) return;
+      timer = setTimeout(() => {
+        state.homeEditMode = true;
+        if (navigator.vibrate) navigator.vibrate(30);
+        reRenderHome(rows);
+      }, 600);
+    });
+    el.addEventListener('pointerup',    () => clearTimeout(timer));
+    el.addEventListener('pointermove',  () => clearTimeout(timer));
+    el.addEventListener('pointercancel',() => clearTimeout(timer));
+  });
+}
+
+/* KPI도 꾹 누르기 → KPI 지글 진입 */
+function bindKpiLongPress() {
+  const grid = document.querySelector('#kpis');
+  if (!grid || state.kpiJiggle) return;
+  let timer = null;
+  grid.querySelectorAll('.kpi').forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.button !== undefined) return;
+      timer = setTimeout(() => {
+        state.kpiJiggle = true;
+        if (navigator.vibrate) navigator.vibrate(30);
+        renderKpis(filteredRecords());
+        const exitHandler = (ev) => {
+          if (!grid.contains(ev.target)) {
+            state.kpiJiggle = false;
+            renderKpis(filteredRecords());
+            document.removeEventListener('pointerdown', exitHandler);
+          }
+        };
+        setTimeout(() => document.addEventListener('pointerdown', exitHandler), 100);
+      }, 600);
+    });
+    el.addEventListener('pointerup',    () => clearTimeout(timer));
+    el.addEventListener('pointermove',  () => clearTimeout(timer));
+    el.addEventListener('pointercancel',() => clearTimeout(timer));
+  });
+}
+
+/* 드래그 정렬 */
+function bindWidgetDrag(grid, rows) {
+  let dragSrcId = null;
+  grid.querySelectorAll('.home-widget[draggable="true"]').forEach((el) => {
+    el.addEventListener('dragstart', (e) => {
+      dragSrcId = el.dataset.widgetId;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => el.classList.add('widget-dragging'), 0);
+    });
+    el.addEventListener('dragend',   () => el.classList.remove('widget-dragging'));
+    el.addEventListener('dragover',  (e) => { e.preventDefault(); el.classList.add('widget-drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('widget-drag-over'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('widget-drag-over');
+      const targetId = el.dataset.widgetId;
+      if (!dragSrcId || dragSrcId === targetId) return;
+      const order = [...state.homeWidgetOrder];
+      const si = order.indexOf(dragSrcId), ti = order.indexOf(targetId);
+      if (si === -1 || ti === -1) return;
+      order.splice(si, 1); order.splice(ti, 0, dragSrcId);
+      state.homeWidgetOrder = order;
+      saveHomeWidgets();
+      reRenderHome(rows);
+    });
+  });
+}
+
+/* 홈 차트 렌더링 (위젯 재생성 후 호출) */
+function renderChartsForHome(rows) {
+  const dateRows = aggregateDateRows(rows);
+  const prevDateRows = aggregateDateRows(previousPeriodRows());
+  if (document.querySelector('#dailyChart')) {
+    const el = document.querySelector('#dailyBasis');
+    if (el) el.textContent = `기준: ${metricMeta[state.metric]?.basis} · 일자별 집계`;
+    renderDailyComboChart(document.querySelector('#dailyChart'), dateRows, state.metric, prevDateRows.length ? prevDateRows : null);
+  }
+  if (document.querySelector('#homeMediaChart')) {
+    renderPieChart(document.querySelector('#homeMediaChart'), aggregate(rows, 'media'), state.metric);
+  }
+  if (document.querySelector('#insights')) renderInsights(rows);
+  if (document.querySelector('#homeWidgetCampTable')) renderHomeCampTable(rows);
+}
+
+function aggregateDateRows(rows) {
+  return aggregate(rows, 'date').sort((a, b) => a.name.localeCompare(b.name)).map((r) => ({ ...r, date: r.name }));
+}
+
+/* 캠페인/소재 테이블 (홈 위젯용 간략 버전) */
+function renderHomeCampTable(rows) {
+  const wrap = document.querySelector('#homeWidgetCampTable');
+  if (!wrap) return;
+  const activeCampaigns = buildActiveSet('campaign');
+  const campRows = aggregate(rows, 'campaign').slice(0, 10);
+  wrap.innerHTML = `<table class="data-table">
+    <thead><tr>
+      <th>캠페인</th><th>광고비</th><th>매출</th><th>ROAS</th><th>전환</th><th>CTR</th><th>CPA</th>
+    </tr></thead>
+    <tbody>${campRows.map((r) => `<tr>
+      <td title="${escapeHtml(r.name)}">${statusBadge(activeCampaigns.has(r.name))} ${escapeHtml(truncate(r.name, 28))}</td>
+      <td>${formatMoney(r.cost)}</td><td>${formatMoney(r.revenue)}</td>
+      <td>${formatRoas(r.roas)}</td><td>${formatNumber(r.purchases)}</td>
+      <td>${formatPercent(r.ctr)}</td><td>${formatMoney(r.cpa)}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+/* 홈 컨트롤 이벤트 재바인딩 (위젯 DOM 재생성 후) */
+function rebindHomeControls() {
+  const metricSel = document.querySelector('#metricSelect');
+  if (metricSel) {
+    metricSel.innerHTML = metricOptionsHtml(false);
+    metricSel.value = metricOrder.includes(state.metric) ? state.metric : 'impressions';
+    metricSel.addEventListener('change', (e) => { state.metric = e.target.value; renderAll(); });
+  }
+  const secSel = document.querySelector('#secondaryMetricSelect');
+  if (secSel) {
+    secSel.innerHTML = metricOptionsHtml(true);
+    secSel.value = state.secondaryMetric || '';
+    secSel.addEventListener('change', (e) => { state.secondaryMetric = e.target.value || null; renderAll(); });
+  }
+  const homeMetricSel = document.querySelector('#homeMetricSelect');
+  if (homeMetricSel) {
+    homeMetricSel.innerHTML = metricOptionsHtml(false);
+    homeMetricSel.value = metricOrder.includes(state.metric) ? state.metric : 'impressions';
+    homeMetricSel.addEventListener('change', (e) => { state.metric = e.target.value; renderAll(); });
+  }
+  document.querySelectorAll('.metric-button').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.metric === state.metric);
+    btn.addEventListener('click', () => { state.metric = btn.dataset.metric; renderAll(); });
+  });
+  document.querySelectorAll('.efficiency-button').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.secondaryMetric === state.secondaryMetric);
+    btn.addEventListener('click', () => {
+      const m = btn.dataset.secondaryMetric;
+      state.secondaryMetric = state.secondaryMetric === m ? null : m;
+      renderAll();
+    });
+  });
+  const anomalyBtn = document.querySelector('#toggleAnomalyBtn');
+  if (anomalyBtn) {
+    anomalyBtn.checked = state.showAnomalyMarkers;
+    anomalyBtn.addEventListener('change', (e) => { state.showAnomalyMarkers = e.target.checked; renderAll(); });
+  }
+}
+
+/* KPI 드래그 정렬 */
+function bindKpiDrag() {
+  const grid = document.querySelector('#kpis');
+  if (!grid) return;
+  let dragSrc = null;
+  grid.querySelectorAll('.kpi[draggable="true"]').forEach((el) => {
+    el.addEventListener('dragstart', (e) => {
+      dragSrc = el.dataset.kpiKey;
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('kpi-dragging');
+    });
+    el.addEventListener('dragend', () => el.classList.remove('kpi-dragging'));
+    el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('kpi-drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('kpi-drag-over'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('kpi-drag-over');
+      const target = el.dataset.kpiKey;
+      if (!dragSrc || dragSrc === target) return;
+      const order = [...state.kpiOrder];
+      const si = order.indexOf(dragSrc), ti = order.indexOf(target);
+      if (si === -1 || ti === -1) return;
+      order.splice(si, 1); order.splice(ti, 0, dragSrc);
+      state.kpiOrder = order;
+      saveKpiOrder();
+      renderKpis(filteredRecords());
+    });
+  });
+}
+
+const KPI_ITEM_MAP = (totals, prevTotals) => ({
+  impressions: { key: 'impressions', label: '노출수',          value: formatCompactMoney(totals.impressions), delta: kpiDeltaHtml(totals.impressions, prevTotals?.impressions, true) },
+  clicks:      { key: 'clicks',      label: '클릭수',          value: formatNumber(totals.clicks),            delta: kpiDeltaHtml(totals.clicks, prevTotals?.clicks, true) },
+  cost:        { key: 'cost',        label: '비용 (VAT+/Fee+)',value: formatCompactMoney(totals.cost),        delta: kpiDeltaHtml(totals.cost, prevTotals?.cost, false) },
+  purchases:   { key: 'purchases',   label: '전환',            value: formatNumber(totals.purchases),         delta: kpiDeltaHtml(totals.purchases, prevTotals?.purchases, true) },
+  revenue:     { key: 'revenue',     label: '전환매출액',       value: formatCompactMoney(totals.revenue),    delta: kpiDeltaHtml(totals.revenue, prevTotals?.revenue, true) },
+  ctr:         { key: 'ctr',         label: 'CTR',             value: formatPercent(totals.ctr),              delta: kpiDeltaHtml(totals.ctr, prevTotals?.ctr, true),   sub: '클릭수 / 노출수' },
+  cpc:         { key: 'cpc',         label: 'CPC',             value: formatMoney(totals.cpc),                delta: kpiDeltaHtml(totals.cpc, prevTotals?.cpc, false),  sub: '비용(VAT+/Fee+) / 클릭수' },
+  cvr:         { key: 'cvr',         label: 'CVR',             value: formatPercent(totals.cvr),              delta: kpiDeltaHtml(totals.cvr, prevTotals?.cvr, true),   sub: '전환수 / 클릭수' },
+  cpa:         { key: 'cpa',         label: 'CPA',             value: formatMoney(totals.cpa),                delta: kpiDeltaHtml(totals.cpa, prevTotals?.cpa, false),  sub: '비용(VAT+/Fee+) / 전환수' },
+  roas:        { key: 'roas',        label: 'ROAS',            value: formatRoas(totals.roas),                delta: kpiDeltaHtml(totals.roas, prevTotals?.roas, true),  sub: '매출 / 비용(VAT+/Fee+)' },
+});
+
 function renderKpis(rows) {
   const totals = aggregateTotals(rows);
   const prevRows = previousPeriodRows();
   const prevTotals = prevRows.length ? aggregateTotals(prevRows) : null;
+  const itemMap = KPI_ITEM_MAP(totals, prevTotals);
+  const jiggle = state.kpiJiggle;
+  const jiggleClass = jiggle ? ' is-jiggling' : '';
 
-  const items = [
-    {
-      label: "노출수",
-      value: formatCompactMoney(totals.impressions),
-      delta: kpiDeltaHtml(totals.impressions, prevTotals?.impressions, true),
-    },
-    {
-      label: "클릭수",
-      value: formatNumber(totals.clicks),
-      delta: kpiDeltaHtml(totals.clicks, prevTotals?.clicks, true),
-    },
-    {
-      label: "비용 (VAT+/Fee+)",
-      value: formatCompactMoney(totals.cost),
-      delta: kpiDeltaHtml(totals.cost, prevTotals?.cost, false),
-    },
-    {
-      label: "전환",
-      value: formatNumber(totals.purchases),
-      delta: kpiDeltaHtml(totals.purchases, prevTotals?.purchases, true),
-    },
-    {
-      label: "전환매출액",
-      value: formatCompactMoney(totals.revenue),
-      delta: kpiDeltaHtml(totals.revenue, prevTotals?.revenue, true),
-    },
-    {
-      label: "CTR",
-      value: formatPercent(totals.ctr),
-      delta: kpiDeltaHtml(totals.ctr, prevTotals?.ctr, true),
-      sub: "클릭수 / 노출수",
-    },
-    {
-      label: "CPC",
-      value: formatMoney(totals.cpc),
-      delta: kpiDeltaHtml(totals.cpc, prevTotals?.cpc, false),
-      sub: "비용(VAT+/Fee+) / 클릭수",
-    },
-    {
-      label: "CVR",
-      value: formatPercent(totals.cvr),
-      delta: kpiDeltaHtml(totals.cvr, prevTotals?.cvr, true),
-      sub: "전환수 / 클릭수",
-    },
-    {
-      label: "CPA",
-      value: formatMoney(totals.cpa),
-      delta: kpiDeltaHtml(totals.cpa, prevTotals?.cpa, false),
-      sub: "비용(VAT+/Fee+) / 전환수",
-    },
-    {
-      label: "ROAS",
-      value: formatRoas(totals.roas),
-      delta: kpiDeltaHtml(totals.roas, prevTotals?.roas, true),
-      sub: "매출 / 비용(VAT+/Fee+)",
-    },
-  ];
+  const grid = document.querySelector('#kpis');
+  grid.innerHTML = state.kpiOrder
+    .map((key) => {
+      const item = itemMap[key];
+      if (!item) return '';
+      const deleteBtn = jiggle
+        ? `<button type="button" class="kpi-delete-btn" data-remove-kpi="${escapeAttribute(key)}">×</button>`
+        : '';
+      return `<article class="kpi${jiggleClass}" draggable="${jiggle ? 'false' : 'true'}" data-kpi-key="${key}" title="${jiggle ? '' : '드래그하여 순서 변경'}">
+        ${deleteBtn}
+        <span class="kpi-label">${escapeHtml(item.label)}</span>
+        <strong class="kpi-value">${item.value}</strong>
+        ${item.delta}
+        ${item.sub ? `<small class="kpi-sub">${escapeHtml(item.sub)}</small>` : ''}
+      </article>`;
+    }).join('');
 
-  document.querySelector("#kpis").innerHTML = items
-    .map(({ label, value, delta, sub }) => `
-      <article class="kpi">
-        <span class="kpi-label">${label}</span>
-        <strong class="kpi-value">${value}</strong>
-        ${delta}
-        ${sub ? `<small class="kpi-sub">${sub}</small>` : ""}
-      </article>
-    `)
-    .join("");
+  if (jiggle) {
+    /* 삭제 버튼 바인딩 */
+    grid.querySelectorAll('[data-remove-kpi]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = btn.dataset.removeKpi;
+        state.kpiOrder = state.kpiOrder.filter((k) => k !== key);
+        saveKpiOrder();
+        renderKpis(filteredRecords());
+      });
+    });
+  } else {
+    bindKpiDrag();
+  }
+
+  bindKpiLongPress();
 }
 
 function renderInsights(rows) {
@@ -1882,6 +2259,8 @@ function weeklyReportInfo(date) {
   };
 }
 
+const PERIOD_DEFAULT_COUNT = { daily: 14, weekly: 7, monthly: 6 };
+
 function aggregatePeriodRows(rows, view) {
   const meta = reportMeta[view] ?? reportMeta.daily;
   const map = new Map();
@@ -1893,13 +2272,16 @@ function aggregatePeriodRows(rows, view) {
     }
     addMetrics(map.get(info.key), row);
   }
-  return [...map.values()]
+  const sorted = [...map.values()]
     .map((row) => enrich(row))
     .sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
+  const limit = PERIOD_DEFAULT_COUNT[view];
+  return limit ? sorted.slice(-limit) : sorted;
 }
 
-function reportMetricOptionsHtml(selected) {
-  return metricOrder
+function reportMetricOptionsHtml(selected, includeNone = false) {
+  const noneOpt = includeNone ? `<option value=""${!selected ? " selected" : ""}>없음</option>` : "";
+  return noneOpt + metricOrder
     .map((metric) => `<option value="${metric}" ${metric === selected ? "selected" : ""}>${escapeHtml(metricSelectLabel(metric))}</option>`)
     .join("");
 }
@@ -1960,39 +2342,141 @@ function renderPeriodMetricChart(node, rows, metric, view) {
   </svg>`;
 }
 
+/* 슬롯별 고정 색상 (0: 민트 막대, 1: 로즈 선, 2: 블루 선) */
+const COMBO_SLOT_COLORS = ["#3ecbc4", "#e09ea0", "#4691c7"];
+
+/* ── 3지표 콤보 차트 (막대 + 라인, 듀얼 Y축) ── */
+function renderPeriodComboChart(node, rows, metrics, view) {
+  if (!node) return;
+  /* null/빈 지표 제거 */
+  const activeMetrics = metrics.filter((m) => m && m !== "");
+  if (!rows.length || !activeMetrics.length) {
+    node.innerHTML = `<div class="empty-chart">선택한 조건에 해당하는 데이터가 없습니다.</div>`;
+    return;
+  }
+  const width = 1100;
+  const height = 320;
+  const pad = { top: 24, right: 80, bottom: 52, left: 72 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const slot = innerW / Math.max(rows.length, 1);
+  const barW = Math.max(6, Math.min(36, slot * 0.5));
+  const xC = (i) => pad.left + slot * i + slot / 2;
+
+  /* 슬롯 인덱스 유지 (색상 일관성) */
+  const slotIndices = metrics.map((m, i) => ({ m, i })).filter(({ m }) => m && m !== "");
+  const BAR_PRIORITY = ["revenue", "cost", "impressions", "clicks", "purchases"];
+  const barMetric = activeMetrics.find((m) => BAR_PRIORITY.includes(m)) ?? activeMetrics[0];
+  const lineMetrics = activeMetrics.filter((m) => m !== barMetric);
+
+  /* 좌측 Y: 매출 (₩), 우측 Y: CPC/ROAS */
+  const barValues  = rows.map((r) => r[barMetric] || 0);
+  const barMax     = ratioAxisMax(barValues, barMetric);
+  const yBar       = (v) => height - pad.bottom - (v / barMax) * innerH;
+
+  /* 우측 축: 각 라인 지표의 최대값을 같은 비율로 스케일 */
+  const lineMaxes  = lineMetrics.map((m) => ratioAxisMax(rows.map((r) => r[m] || 0), m));
+  const rightMax   = Math.max(...lineMaxes, 1);
+  const yLine      = (v, maxVal) => height - pad.bottom - (v / maxVal) * innerH;
+
+  /* 격자 + 좌측 라벨 */
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const yy  = pad.top + ratio * innerH;
+    const lbl = formatShort(barMax * (1 - ratio), barMetric);
+    /* 우측: 첫 번째 라인 지표 스케일 */
+    const rLbl = lineMetrics.length
+      ? `<text class="axis secondary-axis" x="${width - 6}" y="${yy + 4}" text-anchor="end">${formatShort(lineMaxes[0] * (1 - ratio), lineMetrics[0])}</text>`
+      : "";
+    return `<line class="grid-line" x1="${pad.left}" y1="${yy}" x2="${width - pad.right}" y2="${yy}"></line>
+      <text class="axis" x="8" y="${yy + 4}">${escapeHtml(lbl)}</text>${rLbl}`;
+  }).join("");
+
+  /* 슬롯 원본 인덱스로 색상 결정 */
+  const barSlotIdx  = slotIndices.find(({ m }) => m === barMetric)?.i ?? 0;
+  const barColor    = COMBO_SLOT_COLORS[barSlotIdx];
+
+  /* 막대 */
+  const bars = rows.map((row, i) => {
+    const v  = row[barMetric] || 0;
+    const bh = Math.max(1, (v / barMax) * innerH);
+    const detail = `${row.name}\n${metricMeta[barMetric].label}: ${formatDetailed(v, barMetric)}`;
+    return `<rect fill="${barColor}" fill-opacity="0.45" x="${xC(i) - barW / 2}" y="${yBar(v)}" width="${barW}" height="${bh}" rx="4"
+      data-tooltip="${escapeAttribute(detail)}"><title>${escapeHtml(detail)}</title></rect>`;
+  }).join("");
+
+  /* 라인 두 개 (슬롯 인덱스 기반 색상) */
+  const lines = lineMetrics.map((m, li) => {
+    const maxVal  = lineMaxes[li];
+    const slotIdx = slotIndices.find((s) => s.m === m)?.i ?? (li + 1);
+    const color   = COMBO_SLOT_COLORS[slotIdx] ?? COMBO_SLOT_COLORS[li + 1];
+    const pts     = rows.map((r, i) => [xC(i), yLine(r[m] || 0, maxVal)]);
+    const path    = rows.length > 12 ? smoothPath(pts) : `M ${pts.map((p) => p.join(" ")).join(" L ")}`;
+    const dots    = rows.map((r, i) => {
+      const detail = `${r.name}\n${metricMeta[m].label}: ${formatDetailed(r[m] || 0, m)}`;
+      return `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="3.5"
+        fill="${color}" stroke="#fff" stroke-width="1.5"
+        data-tooltip="${escapeAttribute(detail)}"><title>${escapeHtml(detail)}</title></circle>`;
+    }).join("");
+    return `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></path>${dots}`;
+  }).join("");
+
+  /* X축 라벨 */
+  const step = rows.length <= 8 ? 1 : Math.ceil(rows.length / 8);
+  const labels = rows.map((row, i) => {
+    if (i % step !== 0 && i !== rows.length - 1) return "";
+    return `<text class="axis date-axis" x="${xC(i)}" y="${height - 14}" text-anchor="middle">${escapeHtml(row.short || row.name)}</text>`;
+  }).join("");
+
+  node.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="콤보 차트">
+    ${grid}${bars}${lines}${labels}
+  </svg>`;
+}
+
 function renderPeriodReport(view, rows) {
   const meta = reportMeta[view] ?? reportMeta.daily;
   const periodRows = aggregatePeriodRows(rows, view);
-  const metrics = state.reportMetrics[view] ?? ["cost", "revenue", "purchases"];
+  const metrics = state.reportMetrics[view] ?? ["cost", "ctr", null];
   const chartWrap = document.querySelector(`#${view}ReportCharts`);
   if (!chartWrap) return;
-  chartWrap.innerHTML = metrics.map((metric, index) => {
-    const metricInfo = metricMeta[metric];
-    return `<article class="panel chart-panel report-chart-card">
+
+  /* 지표 셀렉터 3개 (슬롯 색상 점 포함) */
+  const selectors = [0, 1, 2].map((i) => {
+    const cur   = metrics[i] ?? null;
+    const color = COMBO_SLOT_COLORS[i];
+    return `<div class="report-combo-selector-item">
+      <span class="combo-slot-dot" style="background:${color};"></span>
+      <select class="report-metric-select" data-report-view="${escapeAttribute(view)}" data-report-slot="${i}">
+        ${reportMetricOptionsHtml(cur, true)}
+      </select>
+    </div>`;
+  }).join("");
+
+  const activeLabels = metrics.filter((m) => m).map((m) => metricMeta[m]?.label ?? m).join(" · ") || "-";
+
+  chartWrap.innerHTML = `
+    <article class="panel chart-panel report-chart-card report-chart-card--combo">
       <header>
         <div>
           <p>${escapeHtml(meta.chartLabel)} Trend</p>
-          <h2>${escapeHtml(meta.titlePrefix)} ${escapeHtml(metricSelectLabel(metric))}</h2>
-          <small class="basis">${escapeHtml(metricInfo.basis)} · ${escapeHtml(meta.chartLabel)} 집계</small>
+          <h2>${escapeHtml(meta.titlePrefix)} 콤보 차트</h2>
+          <small class="basis">${escapeHtml(activeLabels)} · ${escapeHtml(meta.chartLabel)} 집계</small>
         </div>
-        <select class="report-metric-select" data-report-view="${escapeAttribute(view)}" data-report-slot="${index}">
-          ${reportMetricOptionsHtml(metric)}
-        </select>
+        <div class="report-combo-selectors">${selectors}</div>
       </header>
-      <div id="${view}ReportChart${index}" class="chart report-chart"></div>
+      <div id="${view}ReportChartCombo" class="chart report-chart report-chart--combo"></div>
     </article>`;
-  }).join("");
-  metrics.forEach((metric, index) => {
-    renderPeriodMetricChart(document.querySelector(`#${view}ReportChart${index}`), periodRows, metric, view);
-  });
+
+  renderPeriodComboChart(document.querySelector(`#${view}ReportChartCombo`), periodRows, metrics, view);
+
   chartWrap.querySelectorAll(".report-metric-select").forEach((select) => {
     select.addEventListener("change", (event) => {
       const slot = Number(event.target.dataset.reportSlot || 0);
       const reportView = event.target.dataset.reportView;
-      state.reportMetrics[reportView][slot] = event.target.value;
+      state.reportMetrics[reportView][slot] = event.target.value || null;
       renderPeriodReport(reportView, filteredRecords());
     });
   });
+
   const count = document.querySelector(`#${view}ReportCount`);
   if (count) count.textContent = `${formatNumber(periodRows.length)}개 ${meta.tableLabel}`;
   const tbody = document.querySelector(`#${view}ReportTable`);
@@ -2213,12 +2697,7 @@ function renderCharts(rows) {
   const themeRows = aggregate(rows, "creativeTheme").slice(0, 10);
 
   const metric = metricMeta[state.metric];
-  if (state.currentView === "home") {
-    document.querySelector("#dailyBasis").textContent = `기준: ${metric.basis} · 일자별 집계`;
-    renderDailyComboChart(document.querySelector("#dailyChart"), dateRows, state.metric, prevDateRows);
-    renderPieChart(document.querySelector("#homeMediaChart"), aggregate(rows, "media"), state.metric);
-    return;
-  }
+  if (state.currentView === "home") return; // handled by renderChartsForHome
 
   if (state.currentView === "media") {
     document.querySelector("#mediaAnalysisBasis").textContent = `기준: ${metric.basis}`;
@@ -2958,8 +3437,8 @@ function renderAll() {
   document.querySelector("#rowCount").textContent = `${formatNumber(rows.length)}개 집계 / 원본 ${formatNumber(state.data.rowCount)}행`;
   if (state.currentView === "home") {
     renderKpis(rows);
-    renderCharts(rows);
-    renderInsights(rows);
+    renderHomeWidgets(rows);
+    renderChartsForHome(rows);
   } else if (["daily", "weekly", "monthly"].includes(state.currentView)) {
     renderPeriodReport(state.currentView, rows);
   } else if (state.currentView === "media") {

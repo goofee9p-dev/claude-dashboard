@@ -86,69 +86,10 @@
       </div>
 
       <section class="view-section is-active" data-view-panel="home">
-        <section class="kpi-grid" id="kpis"></section>
-        <section class="board-grid">
-          <article class="panel chart-panel">
-            <header>
-              <p>Media Overview</p>
-              <div>
-                <h2>매체별 성과</h2>
-                <small class="basis">기준: 선택 지표 합계</small>
-              </div>
-              <div class="metric-control-bar metric-control-bar--single" aria-label="매체 성과 지표 선택">
-                <label for="homeMetricSelect">성과 지표</label>
-                <select id="homeMetricSelect" class="metric-control-select" data-primary-metric-select></select>
-              </div>
-            </header>
-            <div id="homeMediaChart" class="chart pie-chart"></div>
-          </article>
-          <article class="panel chart-panel span-2">
-            <header>
-              <p>Daily Trend</p>
-              <div>
-                <h2>일자별 성과</h2>
-                <small class="basis" id="dailyBasis">기준: 선택 지표 일자별 집계</small>
-              </div>
-              <div class="chart-header-right">
-                <div class="metric-control-bar metric-control-bar--daily" aria-label="일자별 지표 선택">
-                  <label for="metricSelect">기준 지표</label>
-                  <select id="metricSelect" class="metric-control-select" data-primary-metric-select></select>
-                  <label for="secondaryMetricSelect">비교 지표</label>
-                  <select id="secondaryMetricSelect" class="metric-control-select"></select>
-                </div>
-                <label class="toggle-switch anomaly-side-toggle" title="전일 대비 급변 마커 표시/숨김">
-                  <input type="checkbox" id="toggleAnomalyBtn">
-                  <span class="toggle-slider"></span>
-                  <span class="toggle-label-text">전일자 대비<br>증감율 표기</span>
-                </label>
-                <div class="chart-tools" aria-label="지표 선택">
-                  <div class="metric-switcher">
-                    <button type="button" class="metric-button is-active" data-metric="impressions">노출</button>
-                    <button type="button" class="metric-button" data-metric="clicks">클릭</button>
-                    <button type="button" class="metric-button" data-metric="cost">비용</button>
-                    <button type="button" class="metric-button" data-metric="purchases">전환</button>
-                    <button type="button" class="metric-button" data-metric="revenue">매출</button>
-                  </div>
-                  <div class="metric-switcher efficiency-switcher">
-                    <button type="button" class="efficiency-button" data-secondary-metric="ctr">CTR</button>
-                    <button type="button" class="efficiency-button" data-secondary-metric="cpc">CPC</button>
-                    <button type="button" class="efficiency-button" data-secondary-metric="cvr">CVR</button>
-                    <button type="button" class="efficiency-button" data-secondary-metric="cpa">CPA</button>
-                    <button type="button" class="efficiency-button" data-secondary-metric="roas">ROAS</button>
-                  </div>
-                </div>
-              </div>
-            </header>
-            <div id="dailyChart" class="chart combo-chart"></div>
-          </article>
-          <article class="panel list-panel span-3">
-            <header>
-              <p>Key Findings</p>
-              <h2>요약 인사이트</h2>
-            </header>
-            <div class="insights" id="insights"></div>
-          </article>
-        </section>
+        <div class="home-kpi-bar">
+          <section class="kpi-grid" id="kpis"></section>
+        </div>
+        <section id="homeWidgets" class="board-grid home-widget-area"></section>
       </section>
 
       <section class="view-section" data-view-panel="media">

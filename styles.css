@@ -1243,6 +1243,161 @@ body {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+  cursor: grab;
+  transition: opacity 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.kpi[draggable="true"]:hover {
+  box-shadow: 0 4px 18px rgba(40,60,80,0.15);
+}
+
+.kpi-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.kpi-drag-over {
+  outline: 2px dashed var(--mint);
+  outline-offset: 2px;
+}
+
+/* ── iOS 지글 모드 (꾹 누르기) ──────────────────────────────── */
+@keyframes jiggle {
+  0%   { transform: rotate(-1.5deg) scale(1.01); }
+  50%  { transform: rotate(1.5deg)  scale(1.01); }
+  100% { transform: rotate(-1.5deg) scale(1.01); }
+}
+
+.home-widget.is-jiggling {
+  animation: jiggle 0.18s ease-in-out infinite;
+  z-index: 1;
+}
+
+.kpi.is-jiggling {
+  animation: jiggle 0.18s ease-in-out infinite;
+}
+
+/* × 삭제 버튼 (위젯) */
+.widget-delete-btn {
+  position: absolute;
+  top: -11px;
+  right: -11px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ff3b30;
+  color: #fff;
+  border: 2.5px solid #fff;
+  font-size: 17px;
+  line-height: 1;
+  z-index: 10;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.28);
+  transition: transform 0.1s;
+}
+.widget-delete-btn:hover { transform: scale(1.15); }
+
+/* × 삭제 버튼 (KPI 카드) */
+.kpi-delete-btn {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: #ff3b30;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 14px;
+  line-height: 1;
+  z-index: 10;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.22);
+  transition: transform 0.1s;
+}
+.kpi-delete-btn:hover { transform: scale(1.15); }
+
+/* 위젯 크기 조절 바 */
+.widget-size-bar {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  z-index: 5;
+}
+
+.widget-size-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--mint);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, transform 0.1s;
+}
+.widget-size-dot:hover   { transform: scale(1.2); }
+.widget-size-dot.active  { background: var(--mint); }
+
+.home-widget.widget-dragging { opacity: 0.4; }
+.home-widget.widget-drag-over { outline: 2px dashed var(--mint); outline-offset: 3px; }
+
+/* 위젯 추가 패널 */
+.widget-add-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+
+.widget-add-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.widget-add-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--mint);
+  background: var(--mint-soft);
+  color: var(--mint);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.widget-add-chip:hover { background: rgba(62,203,196,0.25); }
+
+.widget-add-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* home-camp-table */
+.home-camp-table-wrap {
+  overflow-x: auto;
 }
 
 .control {
@@ -1299,6 +1454,8 @@ input {
   grid-template-columns: repeat(5, minmax(140px, 1fr));
   gap: 8px;
   margin-bottom: 10px;
+  overflow: visible;
+  padding-top: 10px; /* × 버튼이 위로 삐져나오는 여백 */
 }
 
 .kpi {
@@ -1350,6 +1507,11 @@ input {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.home-widget-area {
+  overflow: visible;
+  padding-top: 14px; /* × 버튼이 위로 삐져나오는 여백 */
 }
 
 .panel {
@@ -3393,6 +3555,39 @@ tbody tr:hover td {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+/* 콤보 카드: 3컬럼 전체 차지 */
+.report-chart-card--combo {
+  grid-column: 1 / -1;
+}
+
+.report-chart--combo {
+  min-height: 340px;
+  overflow-x: auto;
+}
+
+/* 콤보 차트 지표 셀렉터 3개 */
+.report-combo-selectors {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.report-combo-selector-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.combo-slot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 .report-chart-card header {
