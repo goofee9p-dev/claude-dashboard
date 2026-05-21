@@ -1443,9 +1443,21 @@ body {
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
-  border: 2px dashed var(--line);
+  border: 1.5px dashed rgba(62, 203, 196, 0.35);
+  background: rgba(62, 203, 196, 0.04);
   border-radius: 12px;
   flex-wrap: wrap;
+}
+
+.widget-add-panel::before {
+  content: '+ 위젯 추가';
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  margin-right: 4px;
 }
 
 .widget-add-label {
@@ -1478,26 +1490,6 @@ body {
   font-weight: 700;
 }
 
-/* 위젯 없을 때 빈 상태 안내 */
-.widget-empty-state {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  border: 2px dashed var(--line);
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  user-select: none;
-  transition: border-color 0.15s, color 0.15s;
-}
-.widget-empty-state:hover {
-  border-color: var(--mint);
-  color: var(--mint);
-}
 
 /* home-camp-table */
 .home-camp-table-wrap {

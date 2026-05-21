@@ -1210,18 +1210,14 @@ function renderHomeWidgets(rows) {
   if (!grid) return;
   const jiggle = state.homeEditMode;
 
-  const addPanel = jiggle ? `
-    <div class="widget-add-panel span-3">
-      ${widgetAddPanelHtml(state.homeWidgetOrder)}
-    </div>` : '';
-
-  /* 위젯이 하나도 없을 때: 편집 모드가 아니면 빈 상태 안내 표시 */
-  const emptyState = (!jiggle && state.homeWidgetOrder.length === 0)
-    ? `<div class="widget-empty-state span-3">꾹 눌러서 위젯을 추가하세요</div>`
+  /* 추가 패널: 숨겨진 위젯이 있으면 항상 표시 (지글 모드 무관) */
+  const addPanelInner = widgetAddPanelHtml(state.homeWidgetOrder);
+  const addPanel = addPanelInner
+    ? `<div class="widget-add-panel span-3">${addPanelInner}</div>`
     : '';
 
   grid.innerHTML =
-    state.homeWidgetOrder.map((id) => widgetHtml(id, jiggle)).join('') + addPanel + emptyState;
+    state.homeWidgetOrder.map((id) => widgetHtml(id, jiggle)).join('') + addPanel;
 
   /* 위젯 삭제 */
   grid.querySelectorAll('[data-remove-widget]').forEach((btn) => {
@@ -1300,7 +1296,7 @@ function bindLongPress(grid, rows) {
   if (state.homeEditMode) return;
   let timer = null;
   /* 위젯이 있으면 각 위젯에, 없으면 그리드 자체에 바인딩 */
-  const targets = grid.querySelectorAll('.home-widget, .widget-empty-state');
+  const targets = grid.querySelectorAll('.home-widget');
   const bindTargets = targets.length > 0 ? targets : [grid];
   bindTargets.forEach((el) => {
     el.addEventListener('pointerdown', (e) => {
