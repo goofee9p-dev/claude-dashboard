@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>광고 성과 대시보드</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <aside class="app-sidebar">
+      <div class="sidebar-title">
+        <strong>Zinus</strong>
+        <span>Media Dashboard</span>
+      </div>
+      <nav class="side-nav" aria-label="대시보드 메뉴">
+        <button type="button" class="side-nav-button is-active" data-view="home">Home</button>
+        <button type="button" class="side-nav-button" data-view="daily">일간 보고서</button>
+        <button type="button" class="side-nav-button" data-view="weekly">주간 보고서</button>
+        <button type="button" class="side-nav-button" data-view="monthly">월간 보고서</button>
+        <button type="button" class="side-nav-button" data-view="sales">매출 보고서</button>
+        <button type="button" class="side-nav-button" data-view="media">매체 보고서</button>
+        <button type="button" class="side-nav-button" data-view="brand">브랜드 검색</button>
+        <button type="button" class="side-nav-button" data-view="promotion">프로모션 보고서</button>
+        <button type="button" class="side-nav-button" data-view="keyword">키워드 보고서</button>
+      </nav>
+    </aside>
+
+    <main class="dashboard-shell">
+      <header class="topbar">
+        <div>
+          <h1 id="viewTitle">Home</h1>
+          <p id="viewDescription">광고 전반 지표를 한눈에 확인합니다.</p>
+        </div>
+        <div class="header-date">
+          <div class="date-source">
+            <span>데이터 기준</span>
+            <strong id="sourceDate">-</strong>
+            <small id="rowCount">-</small>
+          </div>
+          <div class="date-controls date-picker-shell">
+            <button type="button" id="dateRangeTrigger" class="date-range-trigger" aria-haspopup="dialog" aria-expanded="false">
+              <span>기간</span>
+              <strong id="dateRangeText">-</strong>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <input id="dateStart" type="hidden" />
+            <input id="dateEnd" type="hidden" />
+            <div id="datePickerPanel" class="date-picker-panel" aria-hidden="true">
+              <div class="date-picker-months" id="datePickerMonths"></div>
+              <div class="date-picker-footer">
+                <div class="date-picker-presets" aria-label="기간 프리셋">
+                  <button type="button" class="preset-button date-preset-chip" data-preset="yesterday">어제</button>
+                  <button type="button" class="preset-button date-preset-chip" data-preset="thisMonth">이번 달</button>
+                  <button type="button" class="preset-button date-preset-chip" data-preset="D7">7일</button>
+                  <button type="button" class="preset-button date-preset-chip" data-preset="D30">30일</button>
+                  <button type="button" class="preset-button date-preset-chip" data-preset="D365">1년</button>
+                  <button type="button" id="datePickerReset" class="date-picker-reset">초기화</button>
+                </div>
+                <button type="button" id="applyDateRange" class="date-apply-button">확인</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="filter-bar">
+        <div class="quick-media-filter" aria-label="매체 빠른 필터">
+          <span class="quick-filter-label">매체</span>
+          <div id="mediaQuickFilter" class="media-quick-list"></div>
+        </div>
+        <div class="filter-bar-actions">
+          <div id="activeFilterChips" class="active-chips"></div>
+          <button type="button" id="openFilterDrawer" class="filter-open-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+            필터
+            <span id="filterBadge" class="filter-badge" hidden></span>
+          </button>
+          <button type="button" id="exportCsvBtn" class="export-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            내보내기
+          </button>
+        </div>
+      </div>
+
+      <section class="view-section is-active" data-view-panel="home">
+        <section class="kpi-grid" id="kpis"></section>
+        <section class="board-grid">
+          <article class="panel chart-panel">
+            <header>
+              <p>Media Overview</p>
+              <div>
+                <h2>매체별 성과</h2>
+                <small class="basis">기준: 선택 지표 합계</small>
+              </div>
+              <div class="metric-control-bar metric-control-bar--single" aria-label="매체 성과 지표 선택">
+                <label for="homeMetricSelect">성과 지표</label>
+                <select id="homeMetricSelect" class="metric-control-select" data-primary-metric-select></select>
+              </div>
+            </header>
+            <div id="homeMediaChart" class="chart pie-chart"></div>
+          </article>
+          <article class="panel chart-panel span-2">
+            <header>
+              <p>Daily Trend</p>
+              <div>
+                <h2>일자별 성과</h2>
+                <small class="basis" id="dailyBasis">기준: 선택 지표 일자별 집계</small>
+              </div>
+              <div class="chart-header-right">
+                <div class="metric-control-bar metric-control-bar--daily" aria-label="일자별 지표 선택">
+                  <label for="metricSelect">기준 지표</label>
+                  <select id="metricSelect" class="metric-control-select" data-primary-metric-select></select>
+                  <label for="secondaryMetricSelect">비교 지표</label>
+                  <select id="secondaryMetricSelect" class="metric-control-select"></select>
+                </div>
+                <label class="toggle-switch anomaly-side-toggle" title="전일 대비 급변 마커 표시/숨김">
+                  <input type="checkbox" id="toggleAnomalyBtn">
+                  <span class="toggle-slider"></span>
+                  <span class="toggle-label-text">전일자 대비<br>증감율 표기</span>
+                </label>
+                <div class="chart-tools" aria-label="지표 선택">
+                  <div class="metric-switcher">
+                    <button type="button" class="metric-button is-active" data-metric="impressions">노출</button>
+                    <button type="button" class="metric-button" data-metric="clicks">클릭</button>
+                    <button type="button" class="metric-button" data-metric="cost">비용</button>
+                    <button type="button" class="metric-button" data-metric="purchases">전환</button>
+                    <button type="button" class="metric-button" data-metric="revenue">매출</button>
+                  </div>
+                  <div class="metric-switcher efficiency-switcher">
+                    <button type="button" class="efficiency-button" data-secondary-metric="ctr">CTR</button>
+                    <button type="button" class="efficiency-button" data-secondary-metric="cpc">CPC</button>
+                    <button type="button" class="efficiency-button" data-secondary-metric="cvr">CVR</button>
+                    <button type="button" class="efficiency-button" data-secondary-metric="cpa">CPA</button>
+                    <button type="button" class="efficiency-button" data-secondary-metric="roas">ROAS</button>
+                  </div>
+                </div>
+              </div>
+            </header>
+            <div id="dailyChart" class="chart combo-chart"></div>
+          </article>
+          <article class="panel list-panel span-3">
+            <header>
+              <p>Key Findings</p>
+              <h2>요약 인사이트</h2>
+            </header>
+            <div class="insights" id="insights"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-section" data-view-panel="media">
+        <section class="board-grid">
+          <article class="panel chart-panel span-2">
+            <header>
+              <p>Media Analysis</p>
+              <div>
+                <h2>매체별 성과 비교</h2>
+                <small class="basis" id="mediaAnalysisBasis">기준: 기준 지표 합계</small>
+              </div>
+            </header>
+            <div id="mediaAnalysisChart" class="chart comparison-chart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <header>
+              <p>Media Share</p>
+              <div>
+                <h2>매체 기여도</h2>
+                <small class="basis">기준 지표 기준 비중</small>
+              </div>
+            </header>
+            <div id="mediaShareChart" class="chart pie-chart"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-section" data-view-panel="brand">
+        <section class="kpi-grid brand-kpi-grid" id="brandKpis"></section>
+        <section class="board-grid">
+          <article class="panel chart-panel span-2">
+            <header>
+              <p>Brand Search Trend</p>
+              <div>
+                <h2>브랜드검색 일자별 성과</h2>
+                <small class="basis" id="brandTrendBasis">기준: 선택 지표 일자별 집계</small>
+              </div>
+              <div class="metric-control-bar metric-control-bar--single" aria-label="브랜드검색 성과 지표 선택">
+                <label for="brandMetricSelect">성과 지표</label>
+                <select id="brandMetricSelect" class="metric-control-select"></select>
+              </div>
+            </header>
+            <div id="brandTrendChart" class="chart combo-chart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <header>
+              <p>Device Group</p>
+              <div>
+                <h2>PC/MO 그룹 성과</h2>
+                <small class="basis" id="brandGroupBasis">기준: 선택 지표 합계</small>
+              </div>
+            </header>
+            <div id="brandGroupChart" class="chart comparison-chart"></div>
+          </article>
+          <article class="panel creative-gallery-panel span-3">
+            <header>
+              <p>Brand Creative Gallery</p>
+              <div>
+                <h2>브랜드검색 소재 성과</h2>
+                <small class="basis" id="creativeGalleryBasis">성과: PC/MO 그룹 기준 · 디바이스 / 소재명 / 성과 / 캡쳐 순서</small>
+              </div>
+              <div class="creative-device-tabs" aria-label="소재 디바이스 필터">
+                <button type="button" class="creative-device-btn is-active" data-device="all">ALL</button>
+                <button type="button" class="creative-device-btn" data-device="MO">MO</button>
+                <button type="button" class="creative-device-btn" data-device="PC">PC</button>
+              </div>
+            </header>
+            <div class="table-wrap creative-table-wrap">
+              <table class="creative-performance-table">
+                <thead>
+                  <tr>
+                    <th>디바이스</th>
+                    <th>소재명</th>
+                    <th>노출</th>
+                    <th>클릭</th>
+                    <th>광고비</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>전환수</th>
+                    <th>CVR</th>
+                    <th>CPA</th>
+                    <th>전환매출</th>
+                    <th>ROAS</th>
+                    <th>캡쳐</th>
+                  </tr>
+                </thead>
+                <tbody id="brandCreativeTable"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="panel table-panel span-3">
+            <header>
+              <p>Brand Search Detail</p>
+              <div>
+                <h2>브랜드검색 그룹 상세</h2>
+                <small class="basis">캠페인명에 브랜드 검색이 포함된 데이터 기준</small>
+              </div>
+            </header>
+            <div class="table-wrap detail-table-wrap">
+              <table class="detail-table brand-detail-table">
+                <thead>
+                  <tr>
+                    <th>캠페인</th>
+                    <th>디바이스</th>
+                    <th>노출수</th>
+                    <th>클릭수</th>
+                    <th>CTR</th>
+                    <th>전환</th>
+                    <th>매출</th>
+                    <th>CVR</th>
+                  </tr>
+                </thead>
+                <tbody id="brandDetailTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <!-- Creative preview modal -->
+      <div id="creativeModal" class="creative-modal" aria-hidden="true">
+        <div class="creative-modal-backdrop"></div>
+        <div class="creative-modal-box">
+          <button class="creative-modal-close" aria-label="닫기">✕</button>
+          <img id="creativeModalImg" src="" alt="소재 미리보기" />
+          <div id="creativeModalCaption" class="creative-modal-caption"></div>
+        </div>
+      </div>
+
+      <section class="view-section" data-view-panel="promotion">
+        <!-- sticky multi-select filter bar -->
+        <div class="promo-filter-sticky" id="promoFilterSticky">
+          <span class="promo-filter-label">프로모션</span>
+          <div id="promoFilterChips" class="promo-filter-chips"></div>
+          <div class="promo-search-wrap">
+            <input type="text" id="promoSearchInput" class="promo-search-input"
+                   placeholder="프로모션 검색 및 추가..." autocomplete="off" />
+            <ul id="promoDropdown" class="promo-dropdown" hidden></ul>
+          </div>
+          <button id="promoClearAll" class="promo-clear-btn" hidden>전체 초기화</button>
+        </div>
+        <section class="board-grid">
+          <article class="panel chart-panel span-2">
+            <header>
+              <p>Promotion Analysis</p>
+              <div>
+                <h2>프로모션별 성과 비교</h2>
+                <small class="basis" id="promotionAnalysisBasis">기준: 기준 지표 합계</small>
+              </div>
+            </header>
+            <div id="promotionAnalysisChart" class="chart comparison-chart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <header>
+              <p>Promotion Media Mix</p>
+              <div>
+                <h2>선택 조건의 매체 기여도</h2>
+                <small class="basis">필터/프로모션 기준 매체 비중</small>
+              </div>
+            </header>
+            <div id="promotionMediaMixChart" class="chart pie-chart"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-section" data-view-panel="daily">
+        <section class="report-layout" data-report-view="daily">
+          <section class="report-chart-grid" id="dailyReportCharts"></section>
+          <article class="panel table-panel report-table-panel">
+            <header>
+              <div>
+                <p>Daily Detail</p>
+                <h2>일별 상세</h2>
+                <small class="basis">상단 기간과 필터 기준 일자별 성과입니다.</small>
+              </div>
+              <span class="report-count" id="dailyReportCount"></span>
+            </header>
+            <div class="table-wrap report-table-wrap">
+              <table class="period-report-table">
+                <thead>
+                  <tr>
+                    <th>일자</th>
+                    <th>노출</th>
+                    <th>클릭</th>
+                    <th>광고비</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>전환수</th>
+                    <th>CVR</th>
+                    <th>CPA</th>
+                    <th>전환매출</th>
+                    <th>ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="dailyReportTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-section" data-view-panel="weekly">
+        <section class="report-layout" data-report-view="weekly">
+          <section class="report-chart-grid" id="weeklyReportCharts"></section>
+          <article class="panel table-panel report-table-panel">
+            <header>
+              <div>
+                <p>Weekly Detail</p>
+                <h2>주차별 상세</h2>
+                <small class="basis">상단 기간과 필터 기준 주차별 성과입니다.</small>
+              </div>
+              <span class="report-count" id="weeklyReportCount"></span>
+            </header>
+            <div class="table-wrap report-table-wrap">
+              <table class="period-report-table">
+                <thead>
+                  <tr>
+                    <th>주차</th>
+                    <th>노출</th>
+                    <th>클릭</th>
+                    <th>광고비</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>전환수</th>
+                    <th>CVR</th>
+                    <th>CPA</th>
+                    <th>전환매출</th>
+                    <th>ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="weeklyReportTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-section" data-view-panel="monthly">
+        <section class="report-layout" data-report-view="monthly">
+          <section class="report-chart-grid" id="monthlyReportCharts"></section>
+          <article class="panel table-panel report-table-panel">
+            <header>
+              <div>
+                <p>Monthly Detail</p>
+                <h2>월별 상세</h2>
+                <small class="basis">상단 기간과 필터 기준 월별 성과입니다.</small>
+              </div>
+              <span class="report-count" id="monthlyReportCount"></span>
+            </header>
+            <div class="table-wrap report-table-wrap">
+              <table class="period-report-table">
+                <thead>
+                  <tr>
+                    <th>월</th>
+                    <th>노출</th>
+                    <th>클릭</th>
+                    <th>광고비</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>전환수</th>
+                    <th>CVR</th>
+                    <th>CPA</th>
+                    <th>전환매출</th>
+                    <th>ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyReportTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-section" data-view-panel="keyword">
+        <section class="panel keyword-control">
+          <header>
+            <div>
+              <p>Keyword Report</p>
+              <h2>키워드 리포트</h2>
+              <small class="basis">상단 기간 기준으로 키워드 매출 TOP10, ROAS 고효율 키워드, 상세 데이터를 확인합니다.</small>
+            </div>
+          </header>
+        </section>
+        <section class="board-grid">
+          <article class="panel table-panel span-2">
+            <header>
+              <p>Revenue TOP10</p>
+              <h2>키워드 매출 TOP10</h2>
+            </header>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>키워드</th>
+                    <th>매출</th>
+                    <th>비용</th>
+                    <th>ROAS</th>
+                    <th>전환</th>
+                  </tr>
+                </thead>
+                <tbody id="keywordRevenueTable"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="panel table-panel">
+            <header>
+              <p>High ROAS</p>
+              <h2>ROAS 고효율 키워드</h2>
+            </header>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>키워드</th>
+                    <th>ROAS</th>
+                    <th>매출</th>
+                    <th>비용</th>
+                  </tr>
+                </thead>
+                <tbody id="keywordRoasTable"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="panel table-panel span-3">
+            <header>
+              <div>
+                <p>Keyword Detail</p>
+                <h2>키워드 상세</h2>
+              </div>
+              <input id="keywordSearch" type="search" placeholder="키워드 검색" />
+            </header>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>키워드</th>
+                    <th>노출</th>
+                    <th>클릭</th>
+                    <th>비용</th>
+                    <th>전환</th>
+                    <th>매출</th>
+                    <th>ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="keywordDetailTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <!-- Promotion Modal -->
+    <div id="promotionModal" class="promotion-modal" aria-hidden="true" role="dialog" aria-label="프로모션 선택">
+      <div class="promotion-modal-backdrop" id="promotionModalBackdrop"></div>
+      <div class="promotion-modal-panel">
+        <div class="promotion-modal-header">
+          <div>
+            <strong>프로모션 선택</strong>
+            <small>기간성 프로모션 · 최신순 정렬</small>
+          </div>
+          <button type="button" id="closePromotionModal" class="modal-close" aria-label="닫기">✕</button>
+        </div>
+        <div class="promotion-modal-search">
+          <input type="search" id="promotionModalSearch" placeholder="프로모션명 검색..." autocomplete="off" />
+        </div>
+        <div id="promotionModalList" class="promotion-modal-list"></div>
+      </div>
+    </div>
+
+    <!-- Filter Drawer -->
+    <div id="filterDrawer" class="filter-drawer" aria-hidden="true">
+      <div class="filter-drawer-overlay" id="filterDrawerOverlay"></div>
+      <aside class="filter-drawer-panel">
+        <div class="filter-drawer-header">
+          <span class="filter-drawer-title">필터</span>
+          <button type="button" id="closeFilterDrawer" class="filter-drawer-close">✕</button>
+        </div>
+        <div class="filter-drawer-body">
+          <div class="filter-section">
+            <div class="filter-section-label">매체</div>
+            <div class="filter-select-wrap">
+              <select id="drawerMediaFilter" class="filter-drawer-select"></select>
+              <span class="filter-select-display" data-filter-select-display="drawerMediaFilter" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="filter-section">
+            <div class="filter-section-label">프로모션명</div>
+            <div class="filter-select-wrap">
+              <select id="promotionFilter" class="filter-drawer-select"></select>
+              <span class="filter-select-display" data-filter-select-display="promotionFilter" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="filter-section">
+            <div class="filter-section-label">목적</div>
+            <div class="filter-select-wrap">
+              <select id="objectiveFilter" class="filter-drawer-select"></select>
+              <span class="filter-select-display" data-filter-select-display="objectiveFilter" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="filter-section">
+            <div class="filter-section-label">타겟</div>
+            <div class="filter-select-wrap">
+              <select id="targetFilter" class="filter-drawer-select"></select>
+              <span class="filter-select-display" data-filter-select-display="targetFilter" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+        <div class="filter-drawer-footer">
+          <button type="button" id="resetFiltersBtn" class="filter-drawer-reset">초기화</button>
+          <button type="button" id="applyFiltersBtn" class="filter-drawer-apply">적용하기</button>
+        </div>
+      </aside>
+    </div>
+
+    <script src="./data/dashboard-data.js"></script>
+    <script src="./creatives/index.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
