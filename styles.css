@@ -203,6 +203,23 @@ body {
   display: block;
 }
 
+/* 매체 보고서 섹션 간격 */
+.media-section-gap {
+  margin-bottom: 14px;
+}
+
+/* 매체 색상 점 (테이블 내) */
+.media-color-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-bottom: 1px;
+}
+
 /* ─── Topbar ──────────────────────────────────────────────── */
 
 .topbar {

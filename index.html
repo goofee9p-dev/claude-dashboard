@@ -94,13 +94,16 @@
       </section>
 
       <section class="view-section" data-view-panel="media">
-        <section class="board-grid">
+        <!-- 1. 콤보 트렌드 차트 (동적 렌더링) -->
+        <div id="mediaComboWrap" class="board-grid media-section-gap"></div>
+        <!-- 2. 매체 비교 바 + 기여도 파이 -->
+        <section class="board-grid media-section-gap">
           <article class="panel chart-panel span-2">
             <header>
               <p>Media Analysis</p>
               <div>
                 <h2>매체별 성과 비교</h2>
-                <small class="basis" id="mediaAnalysisBasis">기준: 기준 지표 합계</small>
+                <small class="basis" id="mediaAnalysisBasis">기준: 광고비 합계</small>
               </div>
             </header>
             <div id="mediaAnalysisChart" class="chart comparison-chart"></div>
@@ -114,6 +117,18 @@
               </div>
             </header>
             <div id="mediaShareChart" class="chart pie-chart"></div>
+          </article>
+        </section>
+        <!-- 3. 매체 상세 테이블 -->
+        <section class="board-grid">
+          <article class="panel table-panel span-3">
+            <header>
+              <p>Media Detail</p>
+              <h2>매체별 성과 상세</h2>
+            </header>
+            <div class="table-wrap">
+              <table class="data-table" id="mediaDetailTable"></table>
+            </div>
           </article>
         </section>
       </section>

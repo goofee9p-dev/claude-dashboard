@@ -69,6 +69,8 @@ const state = {
     monthly: ["cost", "ctr", null],
   },
   homeDailyMetrics: ["cost", "ctr", null],
+  homeMediaMetric: "cost",
+  mediaReportMetrics: ["cost", "ctr", null],
   activePreset: null,
   showAnomalyMarkers: false,
   promotionViewFilter: [],
@@ -1097,10 +1099,12 @@ function widgetHtml(id, jiggle) {
         ${deleteBtn}${sizeBar}
         <header>
           <p>Media Overview</p>
-          <div><h2>매체별 성과</h2><small class="basis">기준: 선택 지표 합계</small></div>
+          <div><h2>매체별 성과</h2><small class="basis">기준: 선택 지표 기준 비중</small></div>
           <div class="metric-control-bar metric-control-bar--single">
-            <label for="homeMetricSelect">성과 지표</label>
-            <select id="homeMetricSelect" class="metric-control-select" data-primary-metric-select></select>
+            <label for="homeMediaMetricSelect">성과 지표</label>
+            <select id="homeMediaMetricSelect" class="metric-control-select">
+              ${reportMetricOptionsHtml(state.homeMediaMetric, false)}
+            </select>
           </div>
         </header>
         <div id="homeMediaChart" class="chart pie-chart"></div>
@@ -1369,7 +1373,14 @@ function renderChartsForHome(rows) {
     });
   }
   if (document.querySelector('#homeMediaChart')) {
-    renderPieChart(document.querySelector('#homeMediaChart'), aggregate(rows, 'media'), state.metric);
+    renderPieChart(document.querySelector('#homeMediaChart'), aggregate(rows, 'media'), state.homeMediaMetric);
+    const hmSel = document.querySelector('#homeMediaMetricSelect');
+    if (hmSel) {
+      hmSel.addEventListener('change', (e) => {
+        state.homeMediaMetric = e.target.value || 'cost';
+        renderChartsForHome(filteredRecords());
+      });
+    }
   }
   if (document.querySelector('#insights')) renderInsights(rows);
   if (document.querySelector('#homeWidgetCampTable')) renderHomeCampTable(rows);
@@ -1852,6 +1863,45 @@ function renderDailyComboChart(node, rows, metric, prevRows = null) {
     ${labels}
     ${legend}
   </svg>`;
+}
+
+/* ── 매체 상세 테이블 ────────────────────────────────────────── */
+function renderMediaDetailTable(mediaRows) {
+  const wrap = document.querySelector("#mediaDetailTable");
+  if (!wrap) return;
+  const activeCampaigns = buildActiveSet("campaign");
+  wrap.innerHTML = `
+    <thead>
+      <tr>
+        <th>매체</th>
+        <th>광고비</th>
+        <th>노출</th>
+        <th>클릭</th>
+        <th>CTR</th>
+        <th>CPC</th>
+        <th>전환</th>
+        <th>전환매출</th>
+        <th>ROAS</th>
+        <th>CPA</th>
+      </tr>
+    </thead>
+    <tbody>${mediaRows.map((r) => `
+      <tr>
+        <td>
+          <span class="media-color-dot" style="background:${mediaColor(r.name)}"></span>
+          ${escapeHtml(truncate(r.name, 30))}
+        </td>
+        <td>${formatMoney(r.cost)}</td>
+        <td>${formatNumber(r.impressions)}</td>
+        <td>${formatNumber(r.clicks)}</td>
+        <td>${formatPercent(r.ctr)}</td>
+        <td>${formatMoney(r.cpc)}</td>
+        <td>${formatNumber(r.purchases)}</td>
+        <td>${formatMoney(r.revenue)}</td>
+        <td>${formatRoas(r.roas)}</td>
+        <td>${formatMoney(r.cpa)}</td>
+      </tr>`).join("")}
+    </tbody>`;
 }
 
 function renderPieChart(container, rows, metric) {
@@ -2766,16 +2816,58 @@ function renderCharts(rows) {
   if (state.currentView === "home") return; // handled by renderChartsForHome
 
   if (state.currentView === "media") {
-    document.querySelector("#mediaAnalysisBasis").textContent = `기준: ${metric.basis}`;
-    renderBarChart(document.querySelector("#mediaAnalysisChart"), aggregate(rows, "media").slice(0, 12), state.metric, {
-      horizontal: true,
-      height: 370,
-      width: 840,
-      leftPadding: 190,
-      firstLineLimit: 18,
-      secondLineLimit: 22,
+    const mediaRows   = aggregate(rows, "media");
+    const mrMetrics   = state.mediaReportMetrics;
+    const primaryM    = mrMetrics.find((m) => m) ?? "cost";
+    const primaryMeta = metricMeta[primaryM] ?? metric;
+
+    /* ── 1. 콤보 트렌드 차트 ── */
+    const comboWrap = document.querySelector("#mediaComboWrap");
+    if (comboWrap) {
+      const selectors = [0, 1, 2].map((i) => {
+        const cur   = mrMetrics[i] ?? null;
+        const color = COMBO_SLOT_COLORS[i];
+        return `<div class="report-combo-selector-item">
+          <span class="combo-slot-dot" style="background:${color}"></span>
+          <select class="media-report-metric-select report-metric-select" data-media-slot="${i}">
+            ${reportMetricOptionsHtml(cur, true)}
+          </select>
+        </div>`;
+      }).join("");
+      const activeLabels = mrMetrics.filter((m) => m).map((m) => metricMeta[m]?.label ?? m).join(" · ") || "-";
+      comboWrap.innerHTML = `
+        <article class="panel chart-panel span-3">
+          <header>
+            <div>
+              <p>Media Trend</p>
+              <h2>전체 일자별 트렌드</h2>
+              <small class="basis">${escapeHtml(activeLabels)} · 일자별 집계</small>
+            </div>
+            <div class="report-combo-selectors">${selectors}</div>
+          </header>
+          <div id="mediaTrendChart" class="chart report-chart report-chart--combo"></div>
+        </article>`;
+      renderPeriodComboChart(document.querySelector("#mediaTrendChart"), dateRows, mrMetrics, "daily");
+      comboWrap.querySelectorAll(".media-report-metric-select").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          state.mediaReportMetrics[Number(e.target.dataset.mediaSlot)] = e.target.value || null;
+          renderCharts(filteredRecords());
+        });
+      });
+    }
+
+    /* ── 2. 매체 비교 바 차트 ── */
+    document.querySelector("#mediaAnalysisBasis").textContent = `기준: ${primaryMeta.basis}`;
+    renderBarChart(document.querySelector("#mediaAnalysisChart"), mediaRows.slice(0, 12), primaryM, {
+      horizontal: true, height: 370, width: 840, leftPadding: 190,
+      firstLineLimit: 18, secondLineLimit: 22,
     });
-    renderPieChart(document.querySelector("#mediaShareChart"), aggregate(rows, "media"), state.metric);
+
+    /* ── 3. 매체 기여도 파이 ── */
+    renderPieChart(document.querySelector("#mediaShareChart"), mediaRows, primaryM);
+
+    /* ── 4. 매체 상세 테이블 ── */
+    renderMediaDetailTable(mediaRows);
     return;
   }
 
