@@ -1676,10 +1676,7 @@ input {
   line-height: 1.6;
   font-size: 13.5px;
   color: var(--ink);
-  padding: 9px 14px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid var(--line);
+  padding: 4px 0;
 }
 
 .insight-tag {
