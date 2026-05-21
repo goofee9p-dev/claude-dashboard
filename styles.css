@@ -1264,19 +1264,52 @@ body {
 
 /* ── iOS 지글 모드 (꾹 누르기) ──────────────────────────────── */
 @keyframes jiggle {
-  0%   { transform: rotate(-1.5deg) scale(1.01); }
-  50%  { transform: rotate(1.5deg)  scale(1.01); }
-  100% { transform: rotate(-1.5deg) scale(1.01); }
+  0%   { transform: rotate(-0.5deg); }
+  50%  { transform: rotate(0.5deg);  }
+  100% { transform: rotate(-0.5deg); }
 }
 
 .home-widget.is-jiggling {
-  animation: jiggle 0.18s ease-in-out infinite;
+  animation: jiggle 0.55s ease-in-out infinite;
   z-index: 1;
 }
 
 .kpi.is-jiggling {
-  animation: jiggle 0.18s ease-in-out infinite;
+  animation: jiggle 0.55s ease-in-out infinite;
 }
+
+/* KPI 빈 슬롯 (삭제 후 + 추가 칸) */
+.kpi-empty-slot {
+  border: 2px dashed var(--line) !important;
+  background: rgba(240,244,247,0.5) !important;
+  box-shadow: none !important;
+  cursor: default !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 90px;
+}
+
+.kpi-add-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--mint);
+  background: var(--mint-soft);
+  color: var(--mint);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, transform 0.1s;
+  font-weight: 300;
+}
+.kpi-add-btn:hover { background: rgba(62,203,196,0.25); transform: scale(1.1); }
 
 /* × 삭제 버튼 (위젯) */
 .widget-delete-btn {

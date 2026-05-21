@@ -1456,18 +1456,16 @@ function renderKpis(rows) {
   const prevTotals = prevRows.length ? aggregateTotals(prevRows) : null;
   const itemMap = KPI_ITEM_MAP(totals, prevTotals);
   const jiggle = state.kpiJiggle;
-  const jiggleClass = jiggle ? ' is-jiggling' : '';
 
   const grid = document.querySelector('#kpis');
-  grid.innerHTML = state.kpiOrder
-    .map((key) => {
+
+  if (jiggle) {
+    /* 지글 모드: 활성 카드(순서대로, ×버튼) + 삭제된 빈 슬롯(+버튼) */
+    const activeHtml = state.kpiOrder.map((key) => {
       const item = itemMap[key];
       if (!item) return '';
-      const deleteBtn = jiggle
-        ? `<button type="button" class="kpi-delete-btn" data-remove-kpi="${escapeAttribute(key)}">×</button>`
-        : '';
-      return `<article class="kpi${jiggleClass}" draggable="${jiggle ? 'false' : 'true'}" data-kpi-key="${key}" title="${jiggle ? '' : '드래그하여 순서 변경'}">
-        ${deleteBtn}
+      return `<article class="kpi is-jiggling" draggable="true" data-kpi-key="${key}">
+        <button type="button" class="kpi-delete-btn" data-remove-kpi="${escapeAttribute(key)}">×</button>
         <span class="kpi-label">${escapeHtml(item.label)}</span>
         <strong class="kpi-value">${item.value}</strong>
         ${item.delta}
@@ -1475,8 +1473,20 @@ function renderKpis(rows) {
       </article>`;
     }).join('');
 
-  if (jiggle) {
-    /* 삭제 버튼 바인딩 */
+    const emptyHtml = KPI_ALL_KEYS
+      .filter((key) => !state.kpiOrder.includes(key))
+      .map((key) => {
+        const item = itemMap[key];
+        if (!item) return '';
+        return `<article class="kpi kpi-empty-slot" data-kpi-key="${key}">
+          <span class="kpi-label">${escapeHtml(item.label)}</span>
+          <button type="button" class="kpi-add-btn" data-add-kpi="${escapeAttribute(key)}">+</button>
+        </article>`;
+      }).join('');
+
+    grid.innerHTML = activeHtml + emptyHtml;
+
+    /* 삭제 버튼 */
     grid.querySelectorAll('[data-remove-kpi]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1486,7 +1496,44 @@ function renderKpis(rows) {
         renderKpis(filteredRecords());
       });
     });
+
+    /* 추가 버튼 */
+    grid.querySelectorAll('[data-add-kpi]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = btn.dataset.addKpi;
+        if (!state.kpiOrder.includes(key)) {
+          /* 자연 순서(KPI_ALL_KEYS) 기준으로 삽입 위치 결정 */
+          const naturalIdx = KPI_ALL_KEYS.indexOf(key);
+          let insertAt = state.kpiOrder.length;
+          for (let i = 0; i < state.kpiOrder.length; i++) {
+            if (KPI_ALL_KEYS.indexOf(state.kpiOrder[i]) > naturalIdx) {
+              insertAt = i;
+              break;
+            }
+          }
+          state.kpiOrder.splice(insertAt, 0, key);
+          saveKpiOrder();
+          renderKpis(filteredRecords());
+        }
+      });
+    });
+
+    /* 지글 모드에서도 드래그 정렬 */
+    bindKpiDrag();
   } else {
+    /* 일반 모드 */
+    grid.innerHTML = state.kpiOrder.map((key) => {
+      const item = itemMap[key];
+      if (!item) return '';
+      return `<article class="kpi" draggable="true" data-kpi-key="${key}" title="드래그하여 순서 변경">
+        <span class="kpi-label">${escapeHtml(item.label)}</span>
+        <strong class="kpi-value">${item.value}</strong>
+        ${item.delta}
+        ${item.sub ? `<small class="kpi-sub">${escapeHtml(item.sub)}</small>` : ''}
+      </article>`;
+    }).join('');
+
     bindKpiDrag();
   }
 
