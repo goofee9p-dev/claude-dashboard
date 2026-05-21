@@ -1678,7 +1678,7 @@ input {
   color: var(--ink);
   padding: 9px 14px;
   border-radius: 8px;
-  background: var(--bg);
+  background: transparent;
   border: 1px solid var(--line);
 }
 
