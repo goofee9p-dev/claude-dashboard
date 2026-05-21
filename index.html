@@ -85,6 +85,7 @@
                   <button type="button" class="preset-button date-preset-chip" data-preset="D30">30일</button>
                   <button type="button" class="preset-button date-preset-chip" data-preset="D365">1년</button>
                   <button type="button" id="datePickerReset" class="date-picker-reset">초기화</button>
+                  <button type="button" id="datePickerPin" class="date-picker-pin">고정</button>
                 </div>
                 <button type="button" id="applyDateRange" class="date-apply-button">확인</button>
               </div>
@@ -146,7 +147,42 @@
             <div id="mediaShareChart" class="chart pie-chart"></div>
           </article>
         </section>
-        <!-- 3. 매체 상세 테이블 -->
+        <!-- 3. 광고 상품 비교 바 + 기여도 파이 -->
+        <section class="board-grid media-section-gap">
+          <article class="panel chart-panel span-2">
+            <header>
+              <p>Product Analysis</p>
+              <div>
+                <h2>광고 상품별 성과 비교</h2>
+                <small class="basis" id="mediaProductBasis">기준: 광고비 합계</small>
+              </div>
+            </header>
+            <div id="mediaProductChart" class="chart comparison-chart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <header>
+              <p>Product Share</p>
+              <div>
+                <h2>광고 상품 기여도</h2>
+                <small class="basis">기준 지표 기준 비중</small>
+              </div>
+            </header>
+            <div id="mediaProductShareChart" class="chart pie-chart"></div>
+          </article>
+        </section>
+        <!-- 4. 광고 상품 상세 테이블 -->
+        <section class="board-grid media-section-gap">
+          <article class="panel table-panel span-3">
+            <header>
+              <p>Product Detail</p>
+              <h2>광고 상품별 성과 상세</h2>
+            </header>
+            <div class="table-wrap">
+              <table class="data-table" id="mediaProductDetailTable"></table>
+            </div>
+          </article>
+        </section>
+        <!-- 5. 매체 상세 테이블 -->
         <section class="board-grid">
           <article class="panel table-panel span-3">
             <header>
@@ -162,6 +198,16 @@
 
       <section class="view-section" data-view-panel="brand">
         <section class="kpi-grid brand-kpi-grid" id="brandKpis"></section>
+        <article class="panel brand-creative-highlight-panel">
+          <header>
+            <p>Creative Highlights</p>
+            <div>
+              <h2>브랜드검색 소재 하이라이트</h2>
+              <small class="basis">CTR Best/Worst · 매출 Best/Worst</small>
+            </div>
+          </header>
+          <div id="brandCreativeHighlights" class="brand-creative-highlights"></div>
+        </article>
         <section class="board-grid">
           <article class="panel chart-panel span-2">
             <header>
@@ -201,7 +247,7 @@
               </div>
             </header>
             <div class="table-wrap creative-table-wrap">
-              <table class="creative-performance-table">
+              <table class="data-table creative-performance-table">
                 <thead>
                   <tr>
                     <th>디바이스</th>
@@ -232,7 +278,7 @@
               </div>
             </header>
             <div class="table-wrap detail-table-wrap">
-              <table class="detail-table brand-detail-table">
+              <table class="data-table detail-table brand-detail-table">
                 <thead>
                   <tr>
                     <th>캠페인</th>
@@ -407,80 +453,58 @@
       </section>
 
       <section class="view-section" data-view-panel="keyword">
-        <section class="panel keyword-control">
+        <div class="keyword-filter-bar">
+          <button type="button" class="media-quick-btn is-major is-active" data-kw-type="파워링크">파워링크</button>
+          <button type="button" class="media-quick-btn is-major" data-kw-type="쇼핑">쇼핑검색</button>
+        </div>
+        <article class="panel list-panel keyword-insight-panel insight-card">
           <header>
-            <div>
-              <p>Keyword Report</p>
-              <h2>키워드 리포트</h2>
-              <small class="basis">상단 기간 기준으로 키워드 매출 TOP10, ROAS 고효율 키워드, 상세 데이터를 확인합니다.</small>
-            </div>
+            <p>Key Findings</p>
+            <h2>키워드 인사이트</h2>
           </header>
-        </section>
-        <section class="board-grid">
-          <article class="panel table-panel span-2">
-            <header>
-              <p>Revenue TOP10</p>
-              <h2>키워드 매출 TOP10</h2>
-            </header>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>키워드</th>
-                    <th>매출</th>
-                    <th>비용</th>
-                    <th>ROAS</th>
-                    <th>전환</th>
-                  </tr>
-                </thead>
-                <tbody id="keywordRevenueTable"></tbody>
-              </table>
-            </div>
-          </article>
-          <article class="panel table-panel">
-            <header>
-              <p>High ROAS</p>
-              <h2>ROAS 고효율 키워드</h2>
-            </header>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>키워드</th>
-                    <th>ROAS</th>
-                    <th>매출</th>
-                    <th>비용</th>
-                  </tr>
-                </thead>
-                <tbody id="keywordRoasTable"></tbody>
-              </table>
-            </div>
-          </article>
-          <article class="panel table-panel span-3">
-            <header>
-              <div>
-                <p>Keyword Detail</p>
-                <h2>키워드 상세</h2>
-              </div>
-              <input id="keywordSearch" type="search" placeholder="키워드 검색" />
-            </header>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>키워드</th>
-                    <th>노출</th>
-                    <th>클릭</th>
-                    <th>비용</th>
-                    <th>전환</th>
-                    <th>매출</th>
-                    <th>ROAS</th>
-                  </tr>
-                </thead>
-                <tbody id="keywordDetailTable"></tbody>
-              </table>
-            </div>
-          </article>
+          <div class="insights" id="keywordInsights"></div>
+        </article>
+        <div class="keyword-search-row">
+          <input id="keywordSearch" type="search" class="keyword-search-input" placeholder="캠페인 · 그룹 · 키워드 검색" />
+        </div>
+        <section class="panel" style="padding:0;overflow:hidden">
+          <div class="table-wrap kw-table-wrap">
+            <table class="data-table" id="keywordMainTable">
+              <colgroup>
+                <col class="kw-col-campaign" />
+                <col class="kw-col-group" />
+                <col class="kw-col-keyword" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+                <col class="kw-col-metric" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>캠페인</th>
+                  <th>그룹</th>
+                  <th>키워드/검색어</th>
+                  <th>노출수</th>
+                  <th>클릭수</th>
+                  <th>클릭률</th>
+                  <th>클릭비용</th>
+                  <th>총비용</th>
+                  <th>전환율</th>
+                  <th>전환비용</th>
+                  <th>전환수</th>
+                  <th>전환매출액</th>
+                  <th>ROAS</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </section>
       </section>
     </main>

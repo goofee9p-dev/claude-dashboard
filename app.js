@@ -14,6 +14,24 @@ function mediaColor(name) {
   return MEDIA_COLORS[String(name)] || "#b2bec3";
 }
 
+const PRODUCT_COLORS = {
+  "쇼핑검색": "#2f876e",
+  "파워링크": "#55bfae",
+  "스마트채널": "#2d70e6",
+  "쇼핑프로모션": "#6c8ff0",
+  "카탈로그": "#8e7cc3",
+  "네이티브": "#00a884",
+  "DA": "#f0ac3f",
+  "디맨드젠": "#da4c4c",
+  "검색": "#e17055",
+  "브랜드검색": "#6c5ce7",
+  "ADVoost": "#7d918c",
+  "기타": "#b2bec3",
+};
+function productColor(name) {
+  return PRODUCT_COLORS[String(name)] || "#b2bec3";
+}
+
 /* ── 필터 레이블 ────────────────────────────────────────────── */
 const FILTER_LABELS = { media: "매체", promotion: "프로모션", objective: "목적", target: "타겟" };
 
@@ -54,10 +72,12 @@ const state = {
     dateStart: "",
     dateEnd: "",
   },
+  dateProfiles: {},
   promotionDetail: "all",
   campaignQuery: "",
   creativeQuery: "",
   keywordQuery: "",
+  keywordType: "파워링크",
   currentView: "home",
   homeMedia: "all",
   homePromotion: "all",
@@ -95,6 +115,13 @@ const homeMediaOptions = {
 };
 
 const quickMediaOrder = ["all", "naver", "naver-syp", "naver-zinus", "naver-gfa", "meta", "meta-naver", "meta-ohouse", "meta-official", "google"];
+const quickMediaMajorOrder = ["all", "naver", "meta", "google"];
+const quickMediaChildOrder = {
+  naver: ["naver-syp", "naver-zinus", "naver-gfa"],
+  meta: ["meta-naver", "meta-ohouse", "meta-official"],
+};
+const keywordMediaOrder = ["naver-syp", "naver-zinus"];
+const dateProfileViews = new Set(["home", "daily", "weekly", "monthly", "media", "brand", "promotion", "keyword"]);
 let datePickerMonth = null;
 let datePickerSelecting = "start";
 
@@ -368,6 +395,26 @@ function aggregate(rows, key) {
     .sort((a, b) => (b[state.metric] || 0) - (a[state.metric] || 0));
 }
 
+function adProductName(row) {
+  const text = [row.campaign, row.group, row.channel, row.creative].map((v) => String(v || "")).join(" ");
+  if (/쇼핑검색/.test(text)) return "쇼핑검색";
+  if (/파워링크/.test(text)) return "파워링크";
+  if (/브랜드\s*검색/.test(text)) return "브랜드검색";
+  if (/스마트채널/.test(text)) return "스마트채널";
+  if (/쇼핑프로모션/.test(text)) return "쇼핑프로모션";
+  if (/카탈로그|DPA/i.test(text)) return "카탈로그";
+  if (/네이티브/.test(text)) return "네이티브";
+  if (/디맨드젠|Demand\s*Gen/i.test(text)) return "디맨드젠";
+  if (/ADVoost|애드부스트/i.test(text)) return "ADVoost";
+  if (/(^|[_\s])DA($|[_\s])|디스플레이/i.test(text)) return "DA";
+  if (/구글SA|검색/i.test(text)) return "검색";
+  return row.channel || "기타";
+}
+
+function aggregateAdProducts(rows, metric = state.metric) {
+  return aggregateByName(rows, adProductName).sort((a, b) => (b[metric] || 0) - (a[metric] || 0));
+}
+
 function keywordName(row) {
   return row.keyword || row.searchKeyword || row.creative || "키워드 없음";
 }
@@ -420,6 +467,37 @@ function uniqueValues(key) {
     .sort((a, b) => String(a).localeCompare(String(b), "ko"));
 }
 
+function isPromotionCandidateName(name) {
+  const normalized = String(name || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "상시" || normalized === "프로모션" || normalized === "전체 프로모션") return false;
+  if (normalized.includes("advoost") || normalized.includes("advosst")) return false;
+  return true;
+}
+
+function promotionCandidateRowsForCurrentRange() {
+  return state.data.records.filter((row) => {
+    if (!isPromotionCandidateName(row.promotion)) return false;
+    if ((row.impressions || 0) < 1) return false;
+    if (state.range.dateStart && row.date < state.range.dateStart) return false;
+    if (state.range.dateEnd && row.date > state.range.dateEnd) return false;
+    if (state.homeMedia !== "all" && !homeMediaOptions[state.homeMedia]?.matches(row)) return false;
+    if (state.homePromotion !== "all" && row.promotion !== state.homePromotion) return false;
+    return Object.entries(state.filters).every(([key, value]) => {
+      if (key === "promotion") return true;
+      if (state.homeMedia !== "all" && key === "media") return true;
+      if (state.homePromotion !== "all" && key === "promotion") return true;
+      return value === "all" || String(row[key]) === String(value);
+    });
+  });
+}
+
+function promotionOptionsForCurrentRange() {
+  return aggregate(promotionCandidateRowsForCurrentRange(), "promotion")
+    .filter((row) => row.impressions > 0)
+    .map((row) => row.name);
+}
+
 function buildPromotionIndex() {
   const index = new Map();
   for (const row of state.data.records) {
@@ -448,10 +526,7 @@ function buildPromotionIndex() {
 
   return [...index.values()]
     .filter((item) => {
-      const normalized = item.name.trim().toLowerCase();
-      if (!normalized) return false;
-      if (normalized === "상시" || normalized === "프로모션" || normalized === "전체 프로모션") return false;
-      if (normalized.includes("advoost") || normalized.includes("advosst")) return false;
+      if (!isPromotionCandidateName(item.name)) return false;
       if (item.hasACampaign && !item.hasPCampaign) return false;
       return true;
     })
@@ -476,19 +551,30 @@ function quickMediaGroup(key) {
   return "all";
 }
 
+function quickMediaButton(key, extraClass = "") {
+  const option = homeMediaOptions[key];
+  if (!option) return "";
+  return `<button type="button" class="media-quick-btn ${extraClass}" data-home-media="${escapeAttribute(key)}" data-media-group="${escapeAttribute(quickMediaGroup(key))}">
+    ${escapeHtml(option.label)}
+  </button>`;
+}
+
 function renderMediaQuickFilter() {
   const wrap = document.querySelector("#mediaQuickFilter");
   if (!wrap) return;
-  wrap.innerHTML = quickMediaOrder
-    .filter((key) => homeMediaOptions[key])
-    .map((key) => {
-      const option = homeMediaOptions[key];
-      const isMajor = ["all", "naver", "meta", "google"].includes(key);
-      return `<button type="button" class="media-quick-btn${isMajor ? " is-major" : ""}" data-home-media="${escapeAttribute(key)}" data-media-group="${escapeAttribute(quickMediaGroup(key))}">
-        ${escapeHtml(option.label)}
-      </button>`;
-    })
-    .join("");
+  if (state.currentView === "keyword") {
+    wrap.innerHTML = `<div class="media-quick-row is-children">${keywordMediaOrder.map((key) => quickMediaButton(key, "is-major")).join("")}</div>`;
+    return;
+  }
+  const activeGroup = quickMediaGroup(state.homeMedia);
+  const childKeys = quickMediaChildOrder[activeGroup] || [];
+  const childHtml = childKeys.length
+    ? `<div class="media-quick-row is-children">${childKeys.map((key) => quickMediaButton(key)).join("")}</div>`
+    : "";
+  wrap.innerHTML = `
+    <div class="media-quick-row is-major-row">${quickMediaMajorOrder.map((key) => quickMediaButton(key, "is-major")).join("")}</div>
+    ${childHtml}
+  `;
 }
 
 function clearDrawerMediaFilter() {
@@ -532,19 +618,6 @@ function populateRangeControls() {
   const dateStart = document.querySelector("#dateStart");
   const dateEnd = document.querySelector("#dateEnd");
 
-  const hasSavedRange = Boolean(state.range.dateStart || state.range.dateEnd);
-  if (!hasSavedRange && dates.length) {
-    const { start, end } = getPresetRange("D30");
-    state.range.dateStart = start;
-    state.range.dateEnd = end;
-    state.activePreset = "D30";
-  } else {
-    state.range.dateStart = state.range.dateStart || dates[0] || "";
-    state.range.dateEnd = state.range.dateEnd || dates.at(-1) || "";
-  }
-  state.pendingRange.dateStart = state.pendingRange.dateStart || state.range.dateStart;
-  state.pendingRange.dateEnd = state.pendingRange.dateEnd || state.range.dateEnd;
-
   if (dateStart.type !== "hidden") {
     dateStart.min = dates[0] || "";
     dateStart.max = dates.at(-1) || "";
@@ -553,14 +626,14 @@ function populateRangeControls() {
     dateEnd.min = dates[0] || "";
     dateEnd.max = dates.at(-1) || "";
   }
-  dateStart.value = state.pendingRange.dateStart;
-  dateEnd.value = state.pendingRange.dateEnd;
+  if (!state.dateProfiles.home && dates.length) {
+    state.dateProfiles.home = defaultDateProfile("home");
+  }
+  activateDateProfile(state.currentView);
   if (!datePickerMonth && state.range.dateStart) {
     const start = parseLocalDate(state.range.dateStart);
     datePickerMonth = new Date(start.getFullYear(), start.getMonth(), 1);
   }
-  updateDateRangeText();
-  renderDatePicker();
 }
 
 function populatePromotionDetailSelect() {
@@ -593,6 +666,10 @@ function dateBounds() {
   return { minDate: dates[0] || "", maxDate: dates.at(-1) || "" };
 }
 
+function dateProfileKey(view = state.currentView) {
+  return dateProfileViews.has(view) ? view : "home";
+}
+
 function referenceDateForRange(minDate, maxDate) {
   const sysToday = new Date();
   const sysStr = formatLocalDate(sysToday);
@@ -606,6 +683,67 @@ function clampDate(value, minDate, maxDate) {
   if (minDate && value < minDate) return minDate;
   if (maxDate && value > maxDate) return maxDate;
   return value;
+}
+
+function reportDefaultDateRange(view) {
+  const { minDate, maxDate } = dateBounds();
+  if (!minDate || !maxDate) return { start: "", end: "", preset: null };
+  const ref = referenceDateForRange(minDate, maxDate);
+  if (view === "promotion") {
+    return { ...getPresetRange("D30"), preset: "D30" };
+  }
+  if (view === "daily") {
+    return { ...getPresetRange("thisMonth"), preset: "thisMonth" };
+  }
+  if (view === "weekly") {
+    const d = new Date(ref);
+    const day = d.getDay() || 7;
+    d.setDate(d.getDate() - day + 1 - 42);
+    return { start: clampDate(formatLocalDate(d), minDate, maxDate), end: maxDate, preset: "weeklyDefault" };
+  }
+  if (view === "monthly") {
+    const d = new Date(ref.getFullYear(), ref.getMonth() - 5, 1);
+    return { start: clampDate(formatLocalDate(d), minDate, maxDate), end: maxDate, preset: "monthlyDefault" };
+  }
+  return { ...getPresetRange("D30"), preset: "D30" };
+}
+
+function defaultDateProfile(view = state.currentView) {
+  const { start, end, preset } = reportDefaultDateRange(view);
+  return {
+    range: { dateStart: start, dateEnd: end },
+    pendingRange: { dateStart: start, dateEnd: end },
+    activePreset: preset,
+    pinned: false,
+  };
+}
+
+function saveActiveDateProfile(view = state.currentView) {
+  const key = dateProfileKey(view);
+  const existing = state.dateProfiles[key] || defaultDateProfile(view);
+  state.dateProfiles[key] = {
+    ...existing,
+    range: { ...state.range },
+    pendingRange: { ...state.pendingRange },
+    activePreset: state.activePreset,
+  };
+}
+
+function activateDateProfile(view = state.currentView) {
+  const key = dateProfileKey(view);
+  const existing = state.dateProfiles[key];
+  const profile = existing?.pinned ? existing : defaultDateProfile(view);
+  state.dateProfiles[key] = profile;
+  state.range = { ...profile.range };
+  state.pendingRange = { ...profile.pendingRange };
+  state.activePreset = profile.activePreset;
+  if (state.range.dateStart) {
+    const start = parseLocalDate(state.range.dateStart);
+    datePickerMonth = new Date(start.getFullYear(), start.getMonth(), 1);
+  }
+  syncDateInputs();
+  updateDateRangeText();
+  renderDatePicker();
 }
 
 function getPresetRange(preset) {
@@ -669,13 +807,20 @@ function getPresetRange(preset) {
   return { start, end };
 }
 
+function syncDateInputs() {
+  const dateStart = document.querySelector("#dateStart");
+  const dateEnd = document.querySelector("#dateEnd");
+  if (dateStart) dateStart.value = state.pendingRange.dateStart || state.range.dateStart || "";
+  if (dateEnd) dateEnd.value = state.pendingRange.dateEnd || state.range.dateEnd || "";
+}
+
 function commitDateRange(start, end, preset = null) {
   state.activePreset = preset;
   state.range.dateStart = start;
   state.range.dateEnd = end;
   state.pendingRange = { ...state.range };
-  document.querySelector("#dateStart").value = start;
-  document.querySelector("#dateEnd").value = end;
+  syncDateInputs();
+  saveActiveDateProfile();
   updateDateRangeText();
   renderDatePicker();
   populatePromotionDetailSelect();
@@ -697,8 +842,7 @@ function setPendingDateRange(start, end = "") {
   }
   state.pendingRange.dateStart = safeStart || "";
   state.pendingRange.dateEnd = safeEnd || "";
-  document.querySelector("#dateStart").value = state.pendingRange.dateStart;
-  document.querySelector("#dateEnd").value = state.pendingRange.dateEnd;
+  syncDateInputs();
   renderDatePicker();
 }
 
@@ -714,6 +858,41 @@ function setDatePickerPreset(preset) {
   const { start, end } = getPresetRange(preset);
   state.activePreset = preset;
   setPendingDateRange(start, end);
+}
+
+function resetActiveDateProfile() {
+  const key = dateProfileKey();
+  const profile = defaultDateProfile(state.currentView);
+  state.dateProfiles[key] = profile;
+  state.range = { ...profile.range };
+  state.pendingRange = { ...profile.pendingRange };
+  state.activePreset = profile.activePreset;
+  if (state.range.dateStart) {
+    const start = parseLocalDate(state.range.dateStart);
+    datePickerMonth = new Date(start.getFullYear(), start.getMonth(), 1);
+  }
+  syncDateInputs();
+  updateDateRangeText();
+  renderDatePicker();
+  populatePromotionDetailSelect();
+  populateWeekSelects();
+  renderAll();
+}
+
+function toggleDatePin() {
+  const key = dateProfileKey();
+  const existing = state.dateProfiles[key] || defaultDateProfile(state.currentView);
+  const pinned = !existing.pinned;
+  state.dateProfiles[key] = {
+    ...existing,
+    range: { ...state.range },
+    pendingRange: { ...state.range },
+    activePreset: state.activePreset,
+    pinned,
+  };
+  state.pendingRange = { ...state.range };
+  syncDateInputs();
+  renderDatePicker();
 }
 
 function updateDateRangeText() {
@@ -749,8 +928,7 @@ function closeDatePicker() {
   panel.setAttribute("aria-hidden", "true");
   trigger.setAttribute("aria-expanded", "false");
   state.pendingRange = { ...state.range };
-  document.querySelector("#dateStart").value = state.range.dateStart;
-  document.querySelector("#dateEnd").value = state.range.dateEnd;
+  syncDateInputs();
   renderDatePicker();
 }
 
@@ -775,6 +953,12 @@ function renderDatePicker() {
   document.querySelectorAll(".date-preset-chip").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.preset === state.activePreset);
   });
+  const pinButton = document.querySelector("#datePickerPin");
+  if (pinButton) {
+    const pinned = Boolean(state.dateProfiles[dateProfileKey()]?.pinned);
+    pinButton.classList.toggle("is-active", pinned);
+    pinButton.textContent = pinned ? "고정됨" : "고정";
+  }
 }
 
 function renderDatePickerMonth(month, index, minDate, maxDate) {
@@ -1620,6 +1804,7 @@ function renderInsights(rows) {
   /* 핵심 숫자 강조 헬퍼 */
   const n  = (v) => `<strong class="in-num">${v}</strong>`;
   const nm = (v) => `<em class="in-name">${escapeHtml(truncate(String(v), 20))}</em>`;
+  const mediaNm = (v) => nm(pieMediaLabel(v));
 
   const lines = [
     bestRoas ? {
@@ -1640,12 +1825,12 @@ function renderInsights(rows) {
     bestCtr ? {
       color: "#00b894",
       tag: "CTR",
-      text: `클릭률이 가장 높은 매체는 ${nm(bestCtr.name)}으로 CTR ${n(formatPercent(bestCtr.ctr))}를 기록했습니다. 클릭 ${n(formatNumber(bestCtr.clicks) + "회")}.`,
+      text: `클릭률이 가장 높은 매체는 ${mediaNm(bestCtr.name)}으로 CTR ${n(formatPercent(bestCtr.ctr))}를 기록했습니다. 클릭 ${n(formatNumber(bestCtr.clicks) + "회")}.`,
     } : null,
     bestClicks ? {
       color: "#e17055",
       tag: "클릭",
-      text: `${nm(bestClicks.name)} 매체에서 클릭 ${n(formatNumber(bestClicks.clicks) + "회")}로 가장 많은 유입이 발생했습니다. CTR ${n(formatPercent(bestClicks.ctr))}.`,
+      text: `${mediaNm(bestClicks.name)} 매체에서 클릭 ${n(formatNumber(bestClicks.clicks) + "회")}로 가장 많은 유입이 발생했습니다. CTR ${n(formatPercent(bestClicks.ctr))}.`,
     } : null,
     bestTarget ? {
       color: "#fd79a8",
@@ -1927,7 +2112,48 @@ function renderMediaDetailTable(mediaRows) {
     </tbody>`;
 }
 
-function renderPieChart(container, rows, metric) {
+function renderMediaProductDetailTable(productRows) {
+  const wrap = document.querySelector("#mediaProductDetailTable");
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <thead>
+      <tr>
+        <th>광고 상품</th>
+        <th>광고비</th>
+        <th>노출</th>
+        <th>클릭</th>
+        <th>CTR</th>
+        <th>CPC</th>
+        <th>전환</th>
+        <th>전환매출</th>
+        <th>ROAS</th>
+        <th>CPA</th>
+      </tr>
+    </thead>
+    <tbody>${productRows.map((r) => `
+      <tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td>${formatMoney(r.cost)}</td>
+        <td>${formatNumber(r.impressions)}</td>
+        <td>${formatNumber(r.clicks)}</td>
+        <td>${formatPercent(r.ctr)}</td>
+        <td>${formatMoney(r.cpc)}</td>
+        <td>${formatNumber(r.purchases)}</td>
+        <td>${formatMoney(r.revenue)}</td>
+        <td>${formatRoas(r.roas)}</td>
+        <td>${formatMoney(r.cpa)}</td>
+      </tr>`).join("")}
+    </tbody>`;
+}
+
+function pieMediaLabel(name) {
+  const str = String(name || '-');
+  const m = str.match(/^네이버 검색광고\((.+)\)$/);
+  if (m) return m[1];
+  return str;
+}
+
+function renderPieChart(container, rows, metric, options = {}) {
   if (!container) return;
   const filtered = rows.filter((r) => (r[metric] || 0) > 0);
   const total = filtered.reduce((s, r) => s + (r[metric] || 0), 0);
@@ -1937,10 +2163,11 @@ function renderPieChart(container, rows, metric) {
   }
   const cx = 90, cy = 90, outerR = 78, innerR = 42, size = 180;
   let angle = -Math.PI / 2;
+  const colorFn = options.colorFn || mediaColor;
   const slices = filtered.map((row) => {
     const value = row[metric] || 0;
     const sweep = (value / total) * 2 * Math.PI;
-    const s = { row, value, startAngle: angle, endAngle: angle + sweep, color: mediaColor(row.name) };
+    const s = { row, value, startAngle: angle, endAngle: angle + sweep, color: colorFn(row.name) };
     angle += sweep;
     return s;
   });
@@ -1961,9 +2188,10 @@ function renderPieChart(container, rows, metric) {
   }).join("");
   const centerVal = escapeHtml(formatShort(total, metric));
   const centerLbl = escapeHtml(metricMeta[metric]?.label ?? "");
+  const labelFormatter = options.labelFormatter || pieMediaLabel;
   const legend = slices.map((s) => {
     const pct = ((s.value / total) * 100).toFixed(1);
-    const name = escapeHtml(truncate(String(s.row.name || "-"), 16));
+    const name = escapeHtml(truncate(labelFormatter(s.row.name), 18));
     const val = escapeHtml(formatShort(s.value, metric));
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
       <span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:${s.color};display:inline-block;"></span>
@@ -1980,14 +2208,16 @@ function renderPieChart(container, rows, metric) {
     </svg>
     <div style="flex:1;min-width:0;">${legend}</div>
   </div>`;
-  container.querySelectorAll("path[data-media]").forEach((path) => {
-    path.addEventListener("click", () => {
-      const media = path.getAttribute("data-media");
-      if (!media) return;
-      state.filters.media = state.filters.media === media ? "all" : media;
-      renderAll();
+  if (options.clickFilter !== false) {
+    container.querySelectorAll("path[data-media]").forEach((path) => {
+      path.addEventListener("click", () => {
+        const media = path.getAttribute("data-media");
+        if (!media) return;
+        state.filters.media = state.filters.media === media ? "all" : media;
+        renderAll();
+      });
     });
-  });
+  }
 }
 
 /* ── 전환 퍼널 차트 ─────────────────────────────────────────── */
@@ -2400,6 +2630,10 @@ function weeklyReportInfo(date) {
 
 const PERIOD_DEFAULT_COUNT = { daily: 14, weekly: 7, monthly: 6 };
 
+function shouldUseDefaultPeriodCount() {
+  return state.activePreset === "D30";
+}
+
 function aggregatePeriodRows(rows, view) {
   const meta = reportMeta[view] ?? reportMeta.daily;
   const map = new Map();
@@ -2414,7 +2648,7 @@ function aggregatePeriodRows(rows, view) {
   const sorted = [...map.values()]
     .map((row) => enrich(row))
     .sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
-  const limit = PERIOD_DEFAULT_COUNT[view];
+  const limit = shouldUseDefaultPeriodCount() ? PERIOD_DEFAULT_COUNT[view] : 0;
   return limit ? sorted.slice(-limit) : sorted;
 }
 
@@ -2757,27 +2991,169 @@ function renderWeeklyCompare() {
   }).join("");
 }
 
-function keywordRow(row, columns = "full") {
-  if (columns === "revenue") {
-    return `<tr><td>${escapeHtml(row.name)}</td><td>${formatMoney(row.revenue)}</td><td>${formatMoney(row.cost)}</td><td>${formatRoas(row.roas)}</td><td>${formatNumber(row.purchases)}</td></tr>`;
-  }
-  if (columns === "roas") {
-    return `<tr><td>${escapeHtml(row.name)}</td><td>${formatRoas(row.roas)}</td><td>${formatMoney(row.revenue)}</td><td>${formatMoney(row.cost)}</td></tr>`;
-  }
-  return `<tr><td>${escapeHtml(row.name)}</td><td>${formatNumber(row.impressions)}</td><td>${formatNumber(row.clicks)}</td><td>${formatMoney(row.cost)}</td><td>${formatNumber(row.purchases)}</td><td>${formatMoney(row.revenue)}</td><td>${formatRoas(row.roas)}</td></tr>`;
+function classifyKeywordRow(row) {
+  const c = String(row.campaign || "");
+  if (c.includes("쇼핑")) return "쇼핑";
+  if (c.includes("파워링크")) return "파워링크";
+  const ch = String(row.channel || "");
+  if (ch === "쇼핑프로모션" || ch === "카탈로그") return "쇼핑";
+  return "파워링크";
 }
 
-function renderKeywordReport(rows) {
-  const sourceRows = rows?.length ? rows : filteredKeywordRecords();
-  const keywordRows = aggregateByName(sourceRows, keywordName).filter((row) => row.name !== "키워드 없음");
-  const revenueTop = [...keywordRows].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-  const roasTop = [...keywordRows].filter((row) => row.cost > 0 && row.revenue > 0).sort((a, b) => b.roas - a.roas).slice(0, 10);
-  const query = state.keywordQuery.trim().toLowerCase();
-  const detail = keywordRows.filter((row) => row.name.toLowerCase().includes(query)).slice(0, 80);
+function keywordInsightName(row) {
+  const parts = [row.campaign, row.group, row.keyword].filter(Boolean);
+  return parts.length ? parts.join(" / ") : row.keyword || "키워드 없음";
+}
 
-  document.querySelector("#keywordRevenueTable").innerHTML = revenueTop.map((row) => keywordRow(row, "revenue")).join("") || `<tr><td colspan="5">키워드 데이터가 없습니다.</td></tr>`;
-  document.querySelector("#keywordRoasTable").innerHTML = roasTop.map((row) => keywordRow(row, "roas")).join("") || `<tr><td colspan="4">키워드 데이터가 없습니다.</td></tr>`;
-  document.querySelector("#keywordDetailTable").innerHTML = detail.map((row) => keywordRow(row)).join("") || `<tr><td colspan="7">키워드 데이터가 없습니다.</td></tr>`;
+function renderKeywordInsights(rows, total) {
+  const node = document.querySelector("#keywordInsights");
+  if (!node) return;
+  if (!rows.length) {
+    node.innerHTML = `<ul class="insight-list"><li class="insight-item"><span class="insight-tag">EMPTY</span><span class="insight-text">선택한 조건에 해당하는 키워드 데이터가 없습니다.</span></li></ul>`;
+    return;
+  }
+
+  const validCostRows = rows.filter((r) => r.cost > 0);
+  const validRevenueRows = rows.filter((r) => r.revenue > 0);
+  const bestRoas = validCostRows.filter((r) => r.revenue > 0).sort((a, b) => b.roas - a.roas)[0];
+  const bestRevenue = [...validRevenueRows].sort((a, b) => b.revenue - a.revenue)[0];
+  const topCost = [...validCostRows].sort((a, b) => b.cost - a.cost)[0];
+  const lowCpa = validCostRows.filter((r) => r.purchases > 0).sort((a, b) => a.cpa - b.cpa)[0];
+  const bestCtr = rows.filter((r) => r.impressions >= 100).sort((a, b) => b.ctr - a.ctr)[0];
+  const topConversion = rows.filter((r) => r.purchases > 0).sort((a, b) => b.purchases - a.purchases)[0];
+
+  const n = (v) => `<strong class="in-num">${v}</strong>`;
+  const nm = (v) => `<em class="in-name">${escapeHtml(truncate(String(v), 28))}</em>`;
+
+  const lines = [
+    bestRoas ? {
+      color: "#2ec4b6",
+      tag: "ROAS",
+      text: `${nm(keywordInsightName(bestRoas))}의 ROAS가 ${n(formatRoas(bestRoas.roas))}로 가장 높습니다. 매출 ${n(formatCompactMoney(bestRoas.revenue) + "원")}.`,
+    } : null,
+    bestRevenue ? {
+      color: "#3a86ff",
+      tag: "매출",
+      text: `매출 기여가 가장 큰 키워드는 ${nm(keywordInsightName(bestRevenue))}입니다. 매출 ${n(formatCompactMoney(bestRevenue.revenue) + "원")}, 전환 ${n(formatNumber(bestRevenue.purchases) + "건")}.`,
+    } : null,
+    topCost ? {
+      color: "#e17055",
+      tag: "비용",
+      text: `광고비가 가장 큰 키워드는 ${nm(keywordInsightName(topCost))}입니다. 비용 ${n(formatCompactMoney(topCost.cost) + "원")}, 클릭 ${n(formatNumber(topCost.clicks) + "회")}.`,
+    } : null,
+    lowCpa ? {
+      color: "#8338ec",
+      tag: "CPA",
+      text: `전환비용이 가장 낮은 키워드는 ${nm(keywordInsightName(lowCpa))}입니다. CPA ${n(formatMoney(lowCpa.cpa))}, 전환 ${n(formatNumber(lowCpa.purchases) + "건")}.`,
+    } : null,
+    bestCtr ? {
+      color: "#00b894",
+      tag: "CTR",
+      text: `노출 100회 이상 기준 CTR 최상위는 ${nm(keywordInsightName(bestCtr))}입니다. CTR ${n(formatPercent(bestCtr.ctr))}, 클릭 ${n(formatNumber(bestCtr.clicks) + "회")}.`,
+    } : null,
+    topConversion ? {
+      color: "#fd79a8",
+      tag: "전환",
+      text: `전환수가 가장 많은 키워드는 ${nm(keywordInsightName(topConversion))}입니다. 전환 ${n(formatNumber(topConversion.purchases) + "건")}, 전체 전환 ${n(formatNumber(total.purchases) + "건")}.`,
+    } : null,
+  ].filter(Boolean);
+
+  node.innerHTML = `<ul class="insight-list">${
+    lines.map(({ color, tag, text }) => `
+      <li class="insight-item">
+        <span class="insight-tag" style="background:${color}20;color:${color}">${escapeHtml(tag)}</span>
+        <span class="insight-text">${text}</span>
+      </li>`).join("")
+  }</ul>`;
+}
+
+function renderKeywordReport() {
+  const allRows = filteredKeywordRecords();
+  const typeRows = allRows.filter((r) => classifyKeywordRow(r) === state.keywordType);
+  const query = state.keywordQuery.trim().toLowerCase();
+
+  // aggregate by campaign + group + keyword triplet
+  const map = new Map();
+  for (const r of typeRows) {
+    const kw = keywordName(r);
+    if (!kw || kw === "키워드 없음") continue;
+    const key = `${r.campaign}||${r.group}||${kw}`;
+    if (!map.has(key)) {
+      map.set(key, { campaign: r.campaign || "", group: r.group || "", keyword: kw, ...emptyMetrics() });
+    }
+    addMetrics(map.get(key), r);
+  }
+
+  let rows = [...map.values()].map((r) => enrich(r));
+
+  if (query) {
+    rows = rows.filter((r) =>
+      r.keyword.toLowerCase().includes(query) ||
+      r.campaign.toLowerCase().includes(query) ||
+      r.group.toLowerCase().includes(query)
+    );
+  }
+  rows.sort((a, b) => b.cost - a.cost);
+
+  // compute totals
+  const totAcc = emptyMetrics();
+  rows.forEach((r) => {
+    totAcc.cost += r.cost;
+    totAcc.impressions += r.impressions;
+    totAcc.clicks += r.clicks;
+    totAcc.purchases += r.purchases;
+    totAcc.revenue += r.revenue;
+  });
+  const tot = enrich(totAcc);
+  renderKeywordInsights(rows, tot);
+
+  const fmtPct = (v) => (isFinite(v) && v > 0) ? (v * 100).toFixed(2) + "%" : "-";
+  const fmtCpc = (v) => (isFinite(v) && v > 0) ? formatMoney(v) : "-";
+
+  function kwMainRow(r) {
+    return `<tr>
+      <td title="${escapeHtml(r.campaign)}">${escapeHtml(r.campaign)}</td>
+      <td title="${escapeHtml(r.group)}">${escapeHtml(r.group)}</td>
+      <td title="${escapeHtml(r.keyword)}">${escapeHtml(r.keyword)}</td>
+      <td>${formatNumber(r.impressions)}</td>
+      <td>${formatNumber(r.clicks)}</td>
+      <td>${fmtPct(r.ctr)}</td>
+      <td>${fmtCpc(r.cpc)}</td>
+      <td>${formatMoney(r.cost)}</td>
+      <td>${fmtPct(r.cvr)}</td>
+      <td>${fmtCpc(r.cpa)}</td>
+      <td>${formatNumber(r.purchases)}</td>
+      <td>${formatMoney(r.revenue)}</td>
+      <td>${formatRoas(r.roas)}</td>
+    </tr>`;
+  }
+
+  const totalRow = `<tr class="kw-total-row">
+    <td style="font-weight:700">TOTAL</td>
+    <td></td>
+    <td style="color:var(--muted);font-size:11px">${rows.length.toLocaleString()} 개</td>
+    <td>${formatNumber(tot.impressions)}</td>
+    <td>${formatNumber(tot.clicks)}</td>
+    <td>${fmtPct(tot.ctr)}</td>
+    <td>${fmtCpc(tot.cpc)}</td>
+    <td style="font-weight:700">${formatMoney(tot.cost)}</td>
+    <td>${fmtPct(tot.cvr)}</td>
+    <td>${fmtCpc(tot.cpa)}</td>
+    <td>${formatNumber(tot.purchases)}</td>
+    <td style="font-weight:700">${formatMoney(tot.revenue)}</td>
+    <td style="font-weight:700">${formatRoas(tot.roas)}</td>
+  </tr>`;
+
+  const tbody = rows.slice(0, 150).map(kwMainRow).join("");
+  const tableBody = document.querySelector("#keywordMainTable tbody");
+  if (tableBody) {
+    tableBody.innerHTML = totalRow + (tbody || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:40px 0">데이터가 없습니다.</td></tr>`);
+  }
+
+  // sync active button state
+  document.querySelectorAll("[data-kw-type]").forEach((b) =>
+    b.classList.toggle("is-active", b.dataset.kwType === state.keywordType)
+  );
 }
 
 function metricValueRow(label, metrics, isTotal = false) {
@@ -2843,6 +3219,7 @@ function renderCharts(rows) {
     const mrMetrics   = state.mediaReportMetrics;
     const primaryM    = mrMetrics.find((m) => m) ?? "cost";
     const primaryMeta = metricMeta[primaryM] ?? metric;
+    const productRows = aggregateAdProducts(rows, primaryM);
 
     /* ── 1. 콤보 트렌드 차트 ── */
     const comboWrap = document.querySelector("#mediaComboWrap");
@@ -2889,15 +3266,30 @@ function renderCharts(rows) {
     /* ── 3. 매체 기여도 파이 ── */
     renderPieChart(document.querySelector("#mediaShareChart"), mediaRows, primaryM);
 
-    /* ── 4. 매체 상세 테이블 ── */
+    /* ── 4. 광고 상품별 성과 ── */
+    const productBasis = document.querySelector("#mediaProductBasis");
+    if (productBasis) productBasis.textContent = `기준: ${primaryMeta.basis}`;
+    renderBarChart(document.querySelector("#mediaProductChart"), productRows.slice(0, 12), primaryM, {
+      horizontal: true, height: 330, width: 840, leftPadding: 150,
+      firstLineLimit: 12, secondLineLimit: 16,
+    });
+    renderPieChart(document.querySelector("#mediaProductShareChart"), productRows, primaryM, {
+      colorFn: productColor,
+      labelFormatter: (name) => String(name || "-"),
+      clickFilter: false,
+    });
+
+    /* ── 5. 광고 상품/매체 상세 테이블 ── */
+    renderMediaProductDetailTable(productRows);
     renderMediaDetailTable(mediaRows);
     return;
   }
 
   if (state.currentView === "promotion") {
-    const promoRows = state.promotionViewFilter.length
-      ? rows.filter((r) => state.promotionViewFilter.includes(r.promotion))
-      : rows;
+    const availablePromotions = promotionOptionsForCurrentRange();
+    state.promotionViewFilter = state.promotionViewFilter.filter((name) => availablePromotions.includes(name));
+    const activePromotions = state.promotionViewFilter.length ? state.promotionViewFilter : availablePromotions;
+    const promoRows = rows.filter((r) => activePromotions.includes(r.promotion) && (r.impressions || 0) > 0);
     document.querySelector("#promotionAnalysisBasis").textContent = `기준: ${metric.basis}`;
     renderBarChart(document.querySelector("#promotionAnalysisChart"), aggregate(promoRows, "promotion").slice(0, 15), state.metric, {
       horizontal: true,
@@ -2988,6 +3380,13 @@ function resetFilterDrawer() {
   state.range.dateStart = start;
   state.range.dateEnd = end;
   state.pendingRange = { ...state.range };
+  state.dateProfiles[dateProfileKey()] = {
+    ...(state.dateProfiles[dateProfileKey()] || defaultDateProfile(state.currentView)),
+    range: { ...state.range },
+    pendingRange: { ...state.pendingRange },
+    activePreset: "D30",
+    pinned: false,
+  };
   state.homeMedia = "all";
   state.homePromotion = "all";
   state.metric = "impressions";
@@ -3096,10 +3495,7 @@ function sumBrandMetrics(rows) {
     t.purchases += r.purchases || 0;
     t.revenue += r.revenue || 0;
   }
-  t.ctr = t.impressions ? t.clicks / t.impressions : 0;
-  t.cvr = t.clicks ? t.purchases / t.clicks : 0;
-  t.cpa = t.purchases ? t.cost / t.purchases : 0;
-  return t;
+  return enrich(t);
 }
 
 function renderBrandDeviceKpis(pcRows, moRows, allRows) {
@@ -3109,29 +3505,90 @@ function renderBrandDeviceKpis(pcRows, moRows, allRows) {
   const mo = sumBrandMetrics(moRows);
   const all = sumBrandMetrics(allRows);
 
-  function block(label, t, color) {
-    const items = [
-      ["노출", formatNumber(t.impressions)],
-      ["클릭", formatNumber(t.clicks)],
-      ["CTR", formatPercent(t.ctr)],
-      ["전환", formatNumber(t.purchases)],
-      ["매출", formatCompactMoney(t.revenue) + "원"],
-      ["CVR", formatPercent(t.cvr)],
-    ];
-    return `<div class="brand-device-block" style="border-top:3px solid ${color}">
-      <div class="brand-device-tag" style="color:${color}">${escapeHtml(label)}</div>
-      ${items.map(([k, v]) => `<div class="brand-kpi-row">
-        <span class="brand-kpi-label">${k}</span>
-        <span class="brand-kpi-val">${escapeHtml(v)}</span>
-      </div>`).join("")}
-    </div>`;
+  const sub = (pcValue, moValue) => `PC ${pcValue} · MO ${moValue}`;
+  const cards = [
+    { label: "노출수", value: formatNumber(all.impressions), sub: sub(formatNumber(pc.impressions), formatNumber(mo.impressions)) },
+    { label: "클릭수", value: formatNumber(all.clicks), sub: sub(formatNumber(pc.clicks), formatNumber(mo.clicks)) },
+    { label: "광고비", value: formatCompactMoney(all.cost) + "원", sub: sub(formatCompactMoney(pc.cost) + "원", formatCompactMoney(mo.cost) + "원") },
+    { label: "전환수", value: formatNumber(all.purchases), sub: sub(formatNumber(pc.purchases), formatNumber(mo.purchases)) },
+    { label: "매출", value: formatCompactMoney(all.revenue) + "원", sub: sub(formatCompactMoney(pc.revenue) + "원", formatCompactMoney(mo.revenue) + "원") },
+    { label: "ROAS", value: formatRoas(all.roas), sub: sub(formatRoas(pc.roas), formatRoas(mo.roas)) },
+  ];
+
+  function card(item) {
+    return `<article class="kpi brand-kpi-card">
+      <span class="kpi-label">${escapeHtml(item.label)}</span>
+      <strong class="kpi-value">${escapeHtml(item.value)}</strong>
+      <small class="kpi-sub">${escapeHtml(item.sub)}</small>
+    </article>`;
   }
 
-  strip.innerHTML = `<div class="brand-device-strip">
-    ${block("PC", pc, "#4691c7")}
-    ${block("MO", mo, "#00b894")}
-    ${block("전체 브랜드검색", all, "#8fa0b0")}
-  </div>`;
+  strip.innerHTML = cards.map(card).join("");
+}
+
+function brandCreativeCards(brandRows, creatives) {
+  return creatives.map((c) => ({
+    id: c.id || c.creativeId || "",
+    name: c.name || c.creativeName || "소재명 없음",
+    device: String(c.device || "").toUpperCase() || "공통",
+    file: c.file || (c.capture ? `creatives/${c.capture}` : ""),
+    metrics: sumCreativeMetrics(brandRows, {
+      ...c,
+      id: c.id || c.creativeId || "",
+      name: c.name || c.creativeName || "",
+      device: String(c.device || "").toUpperCase(),
+    }),
+  }));
+}
+
+function renderBrandCreativeHighlights(brandRows, creatives) {
+  const wrap = document.querySelector("#brandCreativeHighlights");
+  if (!wrap) return;
+  if (!creatives.length) {
+    wrap.innerHTML = `<div class="brand-highlight-empty">등록된 소재가 없습니다.</div>`;
+    return;
+  }
+
+  const cards = brandCreativeCards(brandRows, creatives).filter((c) => c.metrics.impressions > 0);
+  if (!cards.length) {
+    wrap.innerHTML = `<div class="brand-highlight-empty">표시할 소재 성과가 없습니다.</div>`;
+    return;
+  }
+
+  const ctrRows = cards.filter((c) => c.metrics.impressions > 0);
+  const revenueRows = cards.filter((c) => c.metrics.revenue > 0 || c.metrics.cost > 0 || c.metrics.clicks > 0);
+  const highlights = [
+    { label: "CTR Best", tone: "good", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => b.metrics.ctr - a.metrics.ctr)[0] },
+    { label: "CTR Worst", tone: "bad", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => a.metrics.ctr - b.metrics.ctr)[0] },
+    { label: "매출 Best", tone: "good", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0] },
+    { label: "매출 Worst", tone: "bad", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => a.metrics.revenue - b.metrics.revenue)[0] },
+  ].filter((entry) => entry.item);
+
+  wrap.innerHTML = highlights.map(({ label, tone, metric, value, item }) => {
+    const imgSrc = item.file ? `./${item.file}` : "";
+    const caption = `${item.name}${item.device ? ` (${item.device})` : ""}`;
+    const previewAttrs = imgSrc
+      ? `data-preview-img="${escapeAttribute(imgSrc)}" data-preview-caption="${escapeAttribute(caption)}"`
+      : "";
+    return `<button type="button" class="brand-highlight-card ${tone}" ${previewAttrs}>
+      <span class="brand-highlight-thumb">
+        ${imgSrc ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" />` : `<span class="brand-highlight-noimg">미리보기 없음</span>`}
+      </span>
+      <span class="brand-highlight-body">
+        <span class="brand-highlight-label">${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value(item))}</strong>
+        <em title="${escapeAttribute(item.name)}">${escapeHtml(truncate(item.name, 34))}</em>
+        <small>${escapeHtml(item.device)} · ${escapeHtml(metric)} · 클릭 ${escapeHtml(formatNumber(item.metrics.clicks))}</small>
+      </span>
+    </button>`;
+  }).join("");
+
+  wrap.querySelectorAll(".brand-highlight-card[data-preview-img]").forEach((el) => {
+    el.addEventListener("click", (event) => {
+      event.preventDefault();
+      openCreativeModal(event.currentTarget.dataset.previewImg, event.currentTarget.dataset.previewCaption);
+    });
+  });
 }
 
 function renderBrandTrendChart(container, allRows, pcRows, moRows, metric) {
@@ -3267,10 +3724,12 @@ function renderPromoFilterBar() {
   const clearBtn = document.querySelector("#promoClearAll");
   if (!chipsEl) return;
 
+  const available = promotionOptionsForCurrentRange();
+  state.promotionViewFilter = state.promotionViewFilter.filter((name) => available.includes(name));
   const sel = state.promotionViewFilter;
 
   if (sel.length === 0) {
-    chipsEl.innerHTML = '<span class="promo-all-chip">전체 프로모션</span>';
+    chipsEl.innerHTML = `<span class="promo-all-chip">기간 내 노출 프로모션 ${formatNumber(available.length)}개</span>`;
   } else {
     chipsEl.innerHTML = sel.map((name) =>
       `<span class="promo-chip">
@@ -3293,12 +3752,12 @@ function openPromoDropdown(query) {
   const dropdown = document.querySelector("#promoDropdown");
   if (!dropdown) return;
 
-  const all = uniqueValues("promotion");
+  const all = promotionOptionsForCurrentRange();
   const q   = (query || "").trim().toLowerCase();
   const list = q ? all.filter((p) => p.toLowerCase().includes(q)) : all;
 
   if (!list.length) {
-    dropdown.innerHTML = '<li class="promo-dd-empty">결과 없음</li>';
+    dropdown.innerHTML = '<li class="promo-dd-empty">기간 내 노출된 프로모션이 없습니다.</li>';
     dropdown.hidden = false;
     return;
   }
@@ -3423,18 +3882,7 @@ function renderCreativeGallery(brandRows, creatives) {
   document.querySelectorAll(".creative-device-btn").forEach((btn) => {
     btn.classList.toggle("is-active", (btn.dataset.device || "all") === deviceFilter);
   });
-  const cards = creatives.map((c) => ({
-    id: c.id || c.creativeId || "",
-    name: c.name || c.creativeName || "소재명 없음",
-    device: String(c.device || "").toUpperCase() || "공통",
-    file: c.file || (c.capture ? `creatives/${c.capture}` : ""),
-    metrics: sumCreativeMetrics(brandRows, {
-      ...c,
-      id: c.id || c.creativeId || "",
-      name: c.name || c.creativeName || "",
-      device: String(c.device || "").toUpperCase(),
-    }),
-  }))
+  const cards = brandCreativeCards(brandRows, creatives)
     .filter((c) => deviceFilter === "all" || c.device === deviceFilter)
     .sort((a, b) => {
       const deviceRank = { MO: 0, PC: 1, "공통": 2 };
@@ -3578,6 +4026,8 @@ function renderBrandView(rows) {
   const kpiEl = document.querySelector("#brandKpis");
   if (!brandRows.length) {
     if (kpiEl) kpiEl.innerHTML = '<p style="color:var(--muted);padding:24px;text-align:center">브랜드검색 데이터 없음</p>';
+    const highlightEl = document.querySelector("#brandCreativeHighlights");
+    if (highlightEl) highlightEl.innerHTML = `<div class="brand-highlight-empty">브랜드검색 데이터가 없습니다.</div>`;
     return;
   }
   const pcRows = brandRows.filter((r) => brandDeviceTag(r) === "PC");
@@ -3605,7 +4055,10 @@ function renderBrandView(rows) {
   });
   renderBrandDetailTable(brandRows);
   // 소재 갤러리 (비동기 로드 후 렌더)
-  loadCreatives().then((creatives) => renderCreativeGallery(brandRows, creatives));
+  loadCreatives().then((creatives) => {
+    renderBrandCreativeHighlights(brandRows, creatives);
+    renderCreativeGallery(brandRows, creatives);
+  });
 }
 
 function renderAll() {
@@ -3628,15 +4081,142 @@ function renderAll() {
     renderPromoFilterBar();
     renderCharts(rows);
   } else if (state.currentView === "keyword") {
-    renderKeywordReport(filteredKeywordRecords());
+    renderKeywordReport();
   } else if (state.currentView === "brand") {
     renderBrandView(rows);
   }
   renderFilterChips();
 }
 
+function tableSortText(cell) {
+  return (cell?.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function tableSortDateValue(text) {
+  const compact = text.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(compact)) return Date.parse(`${compact}T00:00:00`);
+  if (/^\d{4}-\d{2}$/.test(compact)) return Date.parse(`${compact}-01T00:00:00`);
+  return null;
+}
+
+function tableSortNumberValue(text) {
+  const compact = text
+    .replace(/[₩원,%회건개]/g, "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+  if (!compact || compact === "-") return null;
+  if (!/^[-+]?\d+(?:\.\d+)?$/.test(compact)) return null;
+  return Number(compact);
+}
+
+function getTableSortValue(cell) {
+  const text = tableSortText(cell);
+  const date = tableSortDateValue(text);
+  if (date !== null) return { type: "date", value: date, text };
+  const number = tableSortNumberValue(text);
+  if (number !== null) return { type: "number", value: number, text };
+  return { type: "text", value: text.toLocaleLowerCase("ko-KR"), text };
+}
+
+function isPinnedTableRow(row) {
+  if (row.classList.contains("kw-total-row")) return "top";
+  if (row.classList.contains("total-row")) return "bottom";
+  if (row.cells.length === 1 && row.cells[0].colSpan > 1) return "bottom";
+  const firstText = tableSortText(row.cells[0]).toLowerCase();
+  if (firstText === "total" || firstText === "합계") return "bottom";
+  return "";
+}
+
+function updateSortableHeaders(table, activeIndex, direction) {
+  table.querySelectorAll("thead th").forEach((th) => {
+    th.classList.add("sortable-th");
+    th.removeAttribute("aria-sort");
+    th.dataset.sortDirection = "";
+    if (th.cellIndex === activeIndex) {
+      th.dataset.sortDirection = direction;
+      th.setAttribute("aria-sort", direction === "asc" ? "ascending" : "descending");
+    }
+  });
+}
+
+function sortTableByHeader(th) {
+  const table = th.closest("table");
+  const tbody = table?.tBodies?.[0];
+  if (!table || !tbody || th.cellIndex < 0) return;
+
+  const columnIndex = th.cellIndex;
+  const nextDirection = table.dataset.sortColumn === String(columnIndex) && table.dataset.sortDirection === "asc" ? "desc" : "asc";
+  table.dataset.sortColumn = String(columnIndex);
+  table.dataset.sortDirection = nextDirection;
+
+  const pinnedTop = [];
+  const pinnedBottom = [];
+  const sortableRows = [];
+  Array.from(tbody.rows).forEach((row, originalIndex) => {
+    const pin = isPinnedTableRow(row);
+    if (pin === "top") pinnedTop.push(row);
+    else if (pin === "bottom") pinnedBottom.push(row);
+    else sortableRows.push({ row, originalIndex, sort: getTableSortValue(row.cells[columnIndex]) });
+  });
+
+  const numericLike = sortableRows.filter(({ sort }) => sort.type === "number" || sort.type === "date").length;
+  const preferNumeric = numericLike >= Math.max(1, Math.ceil(sortableRows.length * 0.6));
+  const directionFactor = nextDirection === "asc" ? 1 : -1;
+
+  sortableRows.sort((a, b) => {
+    let result;
+    if (preferNumeric && a.sort.type !== "text" && b.sort.type !== "text") {
+      result = a.sort.value - b.sort.value;
+    } else {
+      result = String(a.sort.value).localeCompare(String(b.sort.value), "ko-KR", { numeric: true, sensitivity: "base" });
+    }
+    if (result === 0) result = a.originalIndex - b.originalIndex;
+    return result * directionFactor;
+  });
+
+  tbody.replaceChildren(...pinnedTop, ...sortableRows.map(({ row }) => row), ...pinnedBottom);
+  updateSortableHeaders(table, columnIndex, nextDirection);
+}
+
+function bindTableSorting() {
+  document.addEventListener("click", (event) => {
+    const th = event.target.closest("table thead th");
+    if (!th) return;
+    sortTableByHeader(th);
+  });
+}
+
+function updateTableOverflowTitle(target) {
+  const cell = target.closest?.("table th, table td");
+  if (!cell) return;
+  const text = tableSortText(cell);
+  if (!text) return;
+  if (cell.scrollWidth > cell.clientWidth || !cell.hasAttribute("title")) {
+    cell.setAttribute("title", text);
+  }
+}
+
+function bindTableOverflowTitles() {
+  document.addEventListener("mouseover", (event) => updateTableOverflowTitle(event.target));
+  document.addEventListener("focusin", (event) => updateTableOverflowTitle(event.target));
+}
+
 function setView(view) {
+  const previousView = state.currentView;
+  saveActiveDateProfile(previousView);
   state.currentView = view;
+  if (view === "keyword" && state.homeMedia !== "all" && !keywordMediaOrder.includes(state.homeMedia)) {
+    state.homeMedia = "all";
+  }
+  if (view === "brand") {
+    state.homeMedia = "all";
+    state.filters.media = "all";
+    pendingFilters.media = "all";
+  }
+  activateDateProfile(view);
+  populatePromotionDetailSelect();
+  populateWeekSelects();
   document.querySelectorAll(".side-nav-button[data-view]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === view);
   });
@@ -3650,11 +4230,15 @@ function setView(view) {
   const activeScopeLabel = activeScopeLabels.length ? ` - ${activeScopeLabels.join(" / ")}` : "";
   document.querySelector("#viewTitle").textContent = `${title}${activeScopeLabel}`;
   document.querySelector("#viewDescription").textContent = description;
+  document.querySelector(".quick-media-filter")?.classList.toggle("is-hidden", view === "brand");
+  renderMediaQuickFilter();
   syncHomeMediaControls();
   syncHomePromotionControls();
 }
 
 function bindControls() {
+  bindTableSorting();
+  bindTableOverflowTitles();
   populateMetricControls();
   populateFilter("#drawerMediaFilter", "media", "매체");
   populateFilter("#promotionFilter", "promotion", "프로모션");
@@ -3717,8 +4301,10 @@ function bindControls() {
   document.querySelector("#mediaQuickFilter")?.addEventListener("click", (event) => {
     const button = event.target.closest(".media-quick-btn");
     if (!button) return;
-    state.homeMedia = button.dataset.homeMedia || "all";
+    const nextMedia = button.dataset.homeMedia || "all";
+    state.homeMedia = state.currentView === "keyword" && state.homeMedia === nextMedia ? "all" : nextMedia;
     clearDrawerMediaFilter();
+    renderMediaQuickFilter();
     syncHomeMediaControls();
     renderAll();
   });
@@ -3755,9 +4341,16 @@ function bindControls() {
     renderAll();
   });
 
-  document.querySelector("#keywordSearch").addEventListener("input", (event) => {
+  document.querySelector("#keywordSearch")?.addEventListener("input", (event) => {
     state.keywordQuery = event.target.value;
-    renderAll();
+    renderKeywordReport();
+  });
+
+  document.querySelectorAll("[data-kw-type]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.keywordType = btn.dataset.kwType;
+      renderKeywordReport();
+    });
   });
 
   for (const id of ["#weekASelect", "#weekBSelect"]) {
@@ -3786,6 +4379,7 @@ function bindControls() {
   ]) {
     document.querySelector(id)?.addEventListener("change", (event) => {
       state.pendingRange[key] = event.target.value;
+      state.activePreset = null;
       renderDatePicker();
     });
   }
@@ -3822,7 +4416,8 @@ function bindControls() {
   });
 
   document.querySelector("#applyDateRange")?.addEventListener("click", applyPendingDateRange);
-  document.querySelector("#datePickerReset")?.addEventListener("click", () => setDatePickerPreset("all"));
+  document.querySelector("#datePickerReset")?.addEventListener("click", resetActiveDateProfile);
+  document.querySelector("#datePickerPin")?.addEventListener("click", toggleDatePin);
 
   document.querySelectorAll(".preset-button").forEach((button) => {
     button.addEventListener("click", () => {
