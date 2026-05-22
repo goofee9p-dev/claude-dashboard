@@ -120,7 +120,10 @@ const quickMediaChildOrder = {
   naver: ["naver-syp", "naver-zinus", "naver-gfa"],
   meta: ["meta-naver", "meta-ohouse", "meta-official"],
 };
-const keywordMediaOrder = ["naver-syp", "naver-zinus"];
+const keywordMediaOrder = ["all", "naver-syp", "naver-zinus"];
+const BRAND_SEARCH_MEDIA = "네이버 검색광고(zinusinc.naver)";
+const BRAND_SEARCH_ACCOUNT = "zinusinc.naver";
+const BRAND_SEARCH_ACCOUNT_ALIASES = new Set([BRAND_SEARCH_ACCOUNT, "zinus.naver"]);
 const dateProfileViews = new Set(["home", "daily", "weekly", "monthly", "media", "brand", "promotion", "keyword"]);
 let datePickerMonth = null;
 let datePickerSelecting = "start";
@@ -353,6 +356,11 @@ function filteredKeywordRecords() {
   });
 }
 
+function rowMatchesCurrentDateRange(row) {
+  return (!state.range.dateStart || row.date >= state.range.dateStart)
+    && (!state.range.dateEnd || row.date <= state.range.dateEnd);
+}
+
 function previousPeriodRows() {
   const { dateStart, dateEnd } = state.range;
   if (!dateStart || !dateEnd) return [];
@@ -559,11 +567,20 @@ function quickMediaButton(key, extraClass = "") {
   </button>`;
 }
 
+function keywordMediaButton(key) {
+  const option = homeMediaOptions[key];
+  if (!option) return "";
+  const label = key === "all" ? "ALL" : option.label;
+  return `<button type="button" class="media-quick-btn is-major" data-home-media="${escapeAttribute(key)}" data-media-group="${escapeAttribute(quickMediaGroup(key))}">
+    ${escapeHtml(label)}
+  </button>`;
+}
+
 function renderMediaQuickFilter() {
   const wrap = document.querySelector("#mediaQuickFilter");
   if (!wrap) return;
   if (state.currentView === "keyword") {
-    wrap.innerHTML = `<div class="media-quick-row is-children">${keywordMediaOrder.map((key) => quickMediaButton(key, "is-major")).join("")}</div>`;
+    wrap.innerHTML = `<div class="media-quick-row is-children">${keywordMediaOrder.map(keywordMediaButton).join("")}</div>`;
     return;
   }
   const activeGroup = quickMediaGroup(state.homeMedia);
@@ -3508,9 +3525,13 @@ function exportCsv() {
 
 /* ── 브랜드검색 뷰 ───────────────────────────────────────────── */
 
-function getBrandRows(rows) {
+function getBrandRows(rows = state.data?.records || []) {
   const brandSearchCampaign = /^(?:4\.)?\s*\uBE0C\uB79C\uB4DC\s*\uAC80\uC0C9$/i;
-  return rows.filter((r) => brandSearchCampaign.test(String(r.campaign || "").trim()));
+  return rows.filter((r) => {
+    const accountMatch = r.media === BRAND_SEARCH_MEDIA || BRAND_SEARCH_ACCOUNT_ALIASES.has(String(r.account || "").trim());
+    const campaignMatch = brandSearchCampaign.test(String(r.campaign || "").trim());
+    return accountMatch && campaignMatch && rowMatchesCurrentDateRange(r);
+  });
 }
 
 function brandDeviceTag(row) {
@@ -3561,32 +3582,83 @@ function renderBrandDeviceKpis(pcRows, moRows, allRows) {
   strip.innerHTML = cards.map(card).join("");
 }
 
+function normalizeCreativeMatchValue(value) {
+  return String(value || "")
+    .replace(/\(삭제\)/g, "")
+    .trim();
+}
+
 function brandCreativeCards(brandRows, creatives) {
-  return creatives.map((c) => ({
-    id: c.id || c.creativeId || "",
-    name: c.name || c.creativeName || "소재명 없음",
-    device: String(c.device || "").toUpperCase() || "공통",
-    file: c.file || (c.capture ? `creatives/${c.capture}` : ""),
-    metrics: sumCreativeMetrics(brandRows, {
-      ...c,
-      id: c.id || c.creativeId || "",
-      name: c.name || c.creativeName || "",
-      device: String(c.device || "").toUpperCase(),
-    }),
-  }));
+  const byKey = new Map();
+  const upsertCreative = (creative) => {
+    const id = normalizeCreativeMatchValue(creative.id || creative.creativeId || creative.creative || "");
+    const name = creative.name || creative.creativeName || id || "소재명 없음";
+    const key = id || normalizeCreativeMatchValue(name);
+    if (!key) return;
+    const existing = byKey.get(key) || {};
+    byKey.set(key, {
+      ...existing,
+      ...creative,
+      id: id || existing.id || "",
+      name: name || existing.name || id || "소재명 없음",
+      device: String(creative.device || existing.device || "").toUpperCase() || "공통",
+      file: creativeFilePath(creative) || existing.file || "",
+    });
+  };
+
+  creatives.forEach(upsertCreative);
+
+  brandRows.forEach((row) => {
+    const id = normalizeCreativeMatchValue(row.creative || row.creativeId || row.adId || row.id || "");
+    if (!id || byKey.has(id)) return;
+    upsertCreative({
+      id,
+      name: id,
+      device: brandDeviceTag(row),
+      file: "",
+    });
+  });
+
+  return [...byKey.values()].map((c) => {
+    const id = c.id || c.creativeId || "";
+    const name = c.name || c.creativeName || id || "소재명 없음";
+    return {
+      id,
+      name,
+      device: String(c.device || "").toUpperCase() || "공통",
+      file: creativeFilePath(c),
+      metrics: sumCreativeMetrics(brandRows, {
+        ...c,
+        id,
+        name,
+        device: String(c.device || "").toUpperCase(),
+      }),
+    };
+  });
+}
+
+function hasCreativePerformance(card) {
+  const m = card?.metrics || {};
+  return (m.impressions || 0) > 0 ||
+    (m.clicks || 0) > 0 ||
+    (m.cost || 0) > 0 ||
+    (m.purchases || 0) > 0 ||
+    (m.revenue || 0) > 0;
 }
 
 function renderBrandCreativeHighlights(brandRows, creatives) {
   const wrap = document.querySelector("#brandCreativeHighlights");
   if (!wrap) return;
-  if (!creatives.length) {
+
+  const allCards = brandCreativeCards(brandRows, creatives);
+  if (!allCards.length) {
     wrap.innerHTML = `<div class="brand-highlight-empty">등록된 소재가 없습니다.</div>`;
     return;
   }
 
-  const cards = brandCreativeCards(brandRows, creatives).filter((c) => c.metrics.impressions > 0);
+  const cards = allCards.filter(hasCreativePerformance);
   if (!cards.length) {
-    wrap.innerHTML = `<div class="brand-highlight-empty">표시할 소재 성과가 없습니다.</div>`;
+    wrap.innerHTML = `<div class="brand-highlight-empty">소재명/ID로 직접 매칭되는 성과가 없어 Best/Worst를 표시하지 않습니다.</div>`;
     return;
   }
 
@@ -3598,7 +3670,7 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
       : "";
     return `<button type="button" class="brand-highlight-card ${tone}" ${previewAttrs}>
       <span class="brand-highlight-thumb">
-        ${imgSrc ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'brand-highlight-noimg\\'>이미지 없음</span>'" />` : `<span class="brand-highlight-noimg">이미지 없음</span>`}
+        ${imgSrc ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'brand-highlight-noimg\\'>없음</span>'" />` : `<span class="brand-highlight-noimg">없음</span>`}
       </span>
       <span class="brand-highlight-body">
         <span class="brand-highlight-label">${escapeHtml(label)}</span>
@@ -3611,9 +3683,8 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
 
   const renderDeviceGroup = ({ key, label }) => {
     const deviceCards = cards.filter((c) => c.device === key);
-    const highlightRows = deviceCards.filter((c) => c.metrics.revenue > 0);
-    const ctrRows = highlightRows.filter((c) => c.metrics.impressions > 0);
-    const revenueRows = highlightRows;
+    const ctrRows = deviceCards.filter((c) => c.metrics.impressions > 0 && c.metrics.clicks > 0);
+    const revenueRows = deviceCards.filter((c) => c.metrics.revenue > 0);
     const highlights = [
       /* ── Best (상단 2개) ── */
       { label: "매출 Best", tone: "good", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0] },
@@ -3625,12 +3696,12 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
     const total = sumBrandMetrics(brandRows.filter((row) => brandDeviceTag(row) === key));
     const body = highlights.length
       ? highlights.map(renderHighlightCard).join("")
-      : `<div class="brand-highlight-empty">${escapeHtml(label)} 매출 발생 소재가 없습니다.</div>`;
+      : `<div class="brand-highlight-empty">${escapeHtml(label)} 표시할 소재 성과가 없습니다.</div>`;
 
     return `<section class="brand-highlight-device-group">
       <div class="brand-highlight-device-head">
         <span class="brand-device-pill ${key.toLowerCase()}">${escapeHtml(label)}</span>
-        <small>매출 발생 소재 ${escapeHtml(formatNumber(highlightRows.length))}/${escapeHtml(formatNumber(deviceCards.length))}개 · 매출 ${escapeHtml(formatMoney(total.revenue))}</small>
+        <small>성과 소재 ${escapeHtml(formatNumber(deviceCards.length))}개 · 매출 ${escapeHtml(formatMoney(total.revenue))}</small>
       </div>
       <div class="brand-highlight-device-grid">${body}</div>
     </section>`;
@@ -3956,6 +4027,19 @@ const CAL_COLORS = [
   { bg: "#e0f0ff", border: "#2980b9", text: "#0d3d6e" },
 ];
 
+let creativeCalendarPreviewGroups = new Map();
+
+function creativeFilePath(creative) {
+  return creative.file || (creative.capture ? `creatives/${creative.capture}` : "");
+}
+
+function creativeDeviceClass(device) {
+  const key = String(device || "").toUpperCase();
+  if (key === "PC") return "pc";
+  if (key === "MO") return "mo";
+  return "common";
+}
+
 function renderCreativeCalendar(creatives) {
   const container = document.querySelector("#brandCreativeCalendar");
   if (!container) return;
@@ -3969,17 +4053,31 @@ function renderCreativeCalendar(creatives) {
   for (const c of creatives) {
     const parsed = parseCreativeDateRange(c);
     if (!parsed) continue;
-    const key = parsed.displayName + "_" + parsed.startDate.toDateString();
+    const device = String(c.device || parsed.device || "공통").toUpperCase();
+    const previewItem = {
+      id: c.id || c.creativeId || "",
+      name: c.name || c.creativeName || parsed.displayName || "소재명 없음",
+      displayName: parsed.displayName,
+      device,
+      file: creativeFilePath(c),
+    };
+    const key = `${parsed.displayName}_${parsed.startDate.toDateString()}_${parsed.endDate.toDateString()}`;
     if (eventMap.has(key)) {
       const ev = eventMap.get(key);
-      if (!ev.devices.includes(c.device)) ev.devices.push(c.device);
+      if (!ev.devices.includes(device)) ev.devices.push(device);
+      ev.creatives.push(previewItem);
     } else {
-      parsed.devices = [c.device];
+      parsed.devices = [device];
+      parsed.creatives = [previewItem];
       eventMap.set(key, parsed);
     }
   }
 
   const events = [...eventMap.values()];
+  if (!events.length) {
+    container.innerHTML = `<p class="cal-empty">운영 기간을 읽을 수 있는 소재가 없습니다.</p>`;
+    return;
+  }
 
   // 색상 할당 (displayName 기준)
   const nameColorMap = new Map();
@@ -4038,6 +4136,7 @@ function renderCreativeCalendar(creatives) {
 
   // HTML 생성
   const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+  creativeCalendarPreviewGroups = new Map();
 
   let html = `<div class="cal-grid">`;
 
@@ -4093,10 +4192,36 @@ function renderCreativeCalendar(creatives) {
         const isEnd   = ev.endDate   <= wEnd;
         const label   = `${ev.displayName}${ev.timeLabel ? " " + ev.timeLabel : ""}`;
         const devTag  = ev.devices.map(d => `<span class="cal-dev-tag">${d}</span>`).join("");
+        const previewItems = ev.creatives;
+        const inlinePreview = previewItems.length ? `<div class="cal-event-preview-popover" aria-hidden="true">
+          <div class="cal-preview-title">${escapeHtml(label)}</div>
+          <div class="cal-preview-grid">
+            ${previewItems.map((item) => `
+              <figure class="cal-preview-item">
+                <span class="brand-device-pill ${creativeDeviceClass(item.device)}">${escapeHtml(item.device || "공통")}</span>
+                ${item.file
+                  ? `<img src="${escapeAttribute(item.file)}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" loading="lazy" />`
+                  : `<span class="cal-preview-noimg">없음</span>`}
+              </figure>
+            `).join("")}
+          </div>
+        </div>` : "";
+        const previewKey = `cal-${creativeCalendarPreviewGroups.size}`;
+        creativeCalendarPreviewGroups.set(previewKey, {
+          title: label,
+          items: [...previewItems].sort((a, b) => {
+            const rank = { PC: 0, MO: 1, "공통": 2 };
+            return (rank[a.device] ?? 9) - (rank[b.device] ?? 9);
+          }),
+        });
         html += `<div class="cal-event ${isStart?"ev-start":""} ${isEnd?"ev-end":""}"
           style="grid-column:span ${span};background:${ev.color.bg};border-color:${ev.color.border};color:${ev.color.text}"
+          data-calendar-preview="${escapeAttribute(previewKey)}"
+          data-preview-count="${ev.creatives.filter((item) => item.file).length}"
           title="${escapeAttribute(label)}">
           ${isStart ? `<span class="cal-ev-label">${escapeHtml(label)}${devTag}</span>` : ""}
+          ${previewItems.length ? `<button type="button" class="cal-preview-btn" aria-label="소재 보기">소재 보기</button>` : ""}
+          ${inlinePreview}
         </div>`;
       }
       // 나머지 빈 공간
@@ -4111,6 +4236,127 @@ function renderCreativeCalendar(creatives) {
 
   html += `</div>`; // cal-grid
   container.innerHTML = html;
+
+  let activePreviewTarget = null;
+  let floatingPreviewBtn = null;
+
+  const toggleCalendarPreview = (event) => {
+    const target = event.target.closest(".cal-event[data-calendar-preview]");
+    if (!target || !container.contains(target)) return;
+
+    // 이미 활성화된 미리보기를 클릭하면 닫기
+    if (target.classList.contains("is-active")) {
+      activePreviewTarget = null;
+      target.classList.remove("is-active");
+      return;
+    }
+
+    // 다른 활성화된 미리보기는 닫기
+    if (activePreviewTarget && activePreviewTarget !== target) {
+      activePreviewTarget.classList.remove("is-active");
+    }
+
+    activePreviewTarget = target;
+    target.classList.add("is-active");
+
+    // 고정 위치 팝오버 위치 계산
+    const popover = target.querySelector(".cal-event-preview-popover");
+    if (popover) {
+      const rect = target.getBoundingClientRect();
+      popover.style.display = "block";
+
+      // 임시로 top: 0 설정하여 크기 계산
+      popover.style.top = "0";
+      const popoverRect = popover.getBoundingClientRect();
+
+      // 이벤트 위쪽에 표시, 아래 여백 고려
+      let top = rect.top - popoverRect.height - 8;
+
+      // 화면 상단을 넘으면 아래에 표시
+      if (top < 0) {
+        top = rect.bottom + 8;
+      }
+
+      // 좌측 정렬
+      let left = rect.left;
+
+      // 화면 우측을 넘으면 우측 정렬
+      const maxRight = left + popoverRect.width;
+      if (maxRight > window.innerWidth) {
+        left = window.innerWidth - popoverRect.width - 10;
+      }
+
+      // 최소 좌측 마진
+      if (left < 10) left = 10;
+
+      popover.style.top = top + "px";
+      popover.style.left = left + "px";
+    }
+  };
+
+  // 마우스 따라다니는 "소재 보기" 버튼
+  container.addEventListener("mouseenter", (e) => {
+    const target = e.target.closest(".cal-event[data-calendar-preview]");
+    if (!target) return;
+
+    if (!floatingPreviewBtn) {
+      floatingPreviewBtn = document.createElement("button");
+      floatingPreviewBtn.className = "cal-floating-preview-btn";
+      floatingPreviewBtn.textContent = "소재 보기";
+      floatingPreviewBtn.type = "button";
+      document.body.appendChild(floatingPreviewBtn);
+    }
+    floatingPreviewBtn.style.display = "block";
+  }, true);
+
+  container.addEventListener("mouseleave", () => {
+    if (floatingPreviewBtn) floatingPreviewBtn.style.display = "none";
+  }, true);
+
+  container.addEventListener("mousemove", (e) => {
+    const target = e.target.closest(".cal-event[data-calendar-preview]");
+    if (!target || !floatingPreviewBtn) return;
+
+    // 마우스 위치에서 약간 오프셋하여 버튼 위치 설정
+    floatingPreviewBtn.style.left = (e.clientX + 8) + "px";
+    floatingPreviewBtn.style.top = (e.clientY - 8) + "px";
+  }, true);
+
+  // 떠있는 버튼 클릭으로 미리보기 표시
+  document.addEventListener("click", (e) => {
+    if (e.target === floatingPreviewBtn) {
+      const target = e.target.closest?.(".cal-event[data-calendar-preview]");
+      if (!target) {
+        // 마우스 위치 근처의 cal-event 찾기
+        const rect = container.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        const relY = e.clientY - rect.top;
+        const el = document.elementFromPoint(e.clientX, e.clientY - 20);
+        const calEvent = el?.closest(".cal-event[data-calendar-preview]");
+        if (!calEvent) return;
+        toggleCalendarPreview({ target: calEvent });
+      } else {
+        toggleCalendarPreview(e);
+      }
+    } else if (activePreviewTarget) {
+      // 팝오버 또는 달력 내부가 아닌 곳을 클릭하면 닫기
+      const popover = activePreviewTarget.querySelector(".cal-event-preview-popover");
+      if (!e.target.closest(".cal-event[data-calendar-preview]") &&
+          !e.target.closest(".cal-event-preview-popover") &&
+          e.target !== floatingPreviewBtn) {
+        activePreviewTarget.classList.remove("is-active");
+        activePreviewTarget = null;
+      }
+    }
+  }, true);
+
+  // ESC 키로 미리보기 닫기
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && activePreviewTarget) {
+      activePreviewTarget.classList.remove("is-active");
+      activePreviewTarget = null;
+    }
+  });
 }
 
 /* ── 소재 갤러리 ───────────────────────────────────────────── */
@@ -4140,9 +4386,9 @@ async function loadCreatives() {
 }
 
 function sumCreativeMetrics(rows, creative) {
-  const name = String(creative.name || "");
-  const id = String(creative.id || "");
-  const device = String(creative.device || "").toUpperCase();
+  const name = normalizeCreativeMatchValue(creative.name);
+  const id = normalizeCreativeMatchValue(creative.id);
+  const aliases = new Set([name, id].filter(Boolean));
   const t = { impressions: 0, clicks: 0, cost: 0, purchases: 0, revenue: 0 };
 
   if (creative.metrics) {
@@ -4156,11 +4402,11 @@ function sumCreativeMetrics(rows, creative) {
   }
 
   for (const r of rows) {
-    const rowCreative = String(r.creative || "");
-    const rowId = String(r.creativeId || r.adId || r.id || "");
-    const exactMatch = rowCreative && rowCreative === name;
-    const idMatch = id && rowId && rowId === id;
-    if (!exactMatch && !idMatch) continue;
+    const rowCreative = normalizeCreativeMatchValue(r.creative);
+    const rowId = normalizeCreativeMatchValue(r.creativeId || r.adId || r.id || "");
+    const creativeMatch = rowCreative && aliases.has(rowCreative);
+    const idMatch = rowId && aliases.has(rowId);
+    if (!creativeMatch && !idMatch) continue;
     t.impressions += r.impressions || 0;
     t.clicks      += r.clicks      || 0;
     t.cost        += r.cost        || 0;
@@ -4168,27 +4414,20 @@ function sumCreativeMetrics(rows, creative) {
     t.revenue     += r.revenue     || 0;
   }
 
-  if (t.impressions || t.clicks || t.purchases || t.revenue || t.cost) return enrich(t);
-
-  // 현재 raw 브랜드검색 성과는 소재명이 비어 있어, 소재별 직접 매칭이 없으면 PC/MO 그룹 성과를 연결한다.
-  const deviceRows = rows.filter((r) => brandDeviceTag(r) === device);
-  return aggregateRows(deviceRows);
+  // 직접 매칭되는 소재명/ID가 없으면 0으로 표기한다.
+  return enrich(t);
 }
 
 function renderCreativeGallery(brandRows, creatives) {
   const tbody = document.querySelector("#brandCreativeTable");
   if (!tbody) return;
 
-  if (!creatives.length) {
-    tbody.innerHTML = `<tr><td colspan="13">등록된 소재가 없습니다.</td></tr>`;
-    return;
-  }
-
   const deviceFilter = state.brandCreativeDevice;
   document.querySelectorAll(".creative-device-btn").forEach((btn) => {
     btn.classList.toggle("is-active", (btn.dataset.device || "all") === deviceFilter);
   });
   const cards = brandCreativeCards(brandRows, creatives)
+    .filter(hasCreativePerformance)
     .filter((c) => deviceFilter === "all" || c.device === deviceFilter)
     .sort((a, b) => {
       const deviceRank = { MO: 0, PC: 1, "공통": 2 };
@@ -4198,11 +4437,11 @@ function renderCreativeGallery(brandRows, creatives) {
   const basisEl = document.querySelector("#creativeGalleryBasis");
   if (basisEl) {
     const deviceLabel = deviceFilter === "all" ? "ALL" : deviceFilter;
-    basisEl.textContent = `${deviceLabel} 소재 ${cards.length}개 · 성과: PC/MO 그룹 기준 · 디바이스 / 소재명 / 성과 / 캡쳐 순서`;
+    basisEl.textContent = `${deviceLabel} 성과 소재 ${cards.length}개 · 0 성과 소재 숨김 · 소재명/소재ID 매칭 기준`;
   }
 
   if (!cards.length) {
-    tbody.innerHTML = `<tr><td colspan="13">선택한 디바이스에 해당하는 소재가 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13">선택한 디바이스에 성과가 있는 소재가 없습니다.</td></tr>`;
     return;
   }
 
@@ -4280,7 +4519,13 @@ function ensureCreativePreview() {
   if (creativePreviewEl) return creativePreviewEl;
   creativePreviewEl = document.createElement("div");
   creativePreviewEl.className = "creative-hover-preview";
-  creativePreviewEl.innerHTML = '<img alt="소재 미리보기" /><div class="creative-hover-caption"></div>';
+  creativePreviewEl.innerHTML = `
+    <div class="creative-hover-single">
+      <img alt="소재 미리보기" />
+    </div>
+    <div class="creative-hover-grid"></div>
+    <div class="creative-hover-caption"></div>
+  `;
   document.body.appendChild(creativePreviewEl);
   return creativePreviewEl;
 }
@@ -4297,9 +4542,36 @@ function moveCreativePreview(event) {
 function showCreativePreview(src, caption, event) {
   if (!src) return;
   const preview = ensureCreativePreview();
-  const img = preview.querySelector("img");
+  const single = preview.querySelector(".creative-hover-single");
+  const grid = preview.querySelector(".creative-hover-grid");
+  const img = single.querySelector("img");
   const cap = preview.querySelector(".creative-hover-caption");
+  single.hidden = false;
+  grid.hidden = true;
+  grid.innerHTML = "";
   img.src = src;
+  cap.textContent = caption || "";
+  preview.classList.add("is-visible");
+  moveCreativePreview(event);
+}
+
+function showCreativeGroupPreview(items, caption, event) {
+  const visibleItems = items || [];
+  if (!visibleItems.length) return;
+  const preview = ensureCreativePreview();
+  const single = preview.querySelector(".creative-hover-single");
+  const grid = preview.querySelector(".creative-hover-grid");
+  const cap = preview.querySelector(".creative-hover-caption");
+  single.hidden = true;
+  grid.hidden = false;
+  grid.innerHTML = visibleItems.map((item) => `
+    <figure class="creative-hover-item">
+      <span class="brand-device-pill ${creativeDeviceClass(item.device)}">${escapeHtml(item.device || "공통")}</span>
+      ${item.file
+        ? `<img src="${escapeAttribute(item.file)}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" />`
+        : `<span class="creative-hover-noimg">없음</span>`}
+    </figure>
+  `).join("");
   cap.textContent = caption || "";
   preview.classList.add("is-visible");
   moveCreativePreview(event);
@@ -4326,9 +4598,9 @@ function bindCreativeGallery() {
   window.reloadCreatives = () => { _creativesCache = null; renderAll(); };
 }
 
-function renderBrandView(rows) {
+function renderBrandView(rows = null) {
   const metric  = state.brandMetric;
-  const brandRows = getBrandRows(rows);
+  const brandRows = rows || getBrandRows();
   const kpiEl = document.querySelector("#brandKpis");
   if (!brandRows.length) {
     if (kpiEl) kpiEl.innerHTML = '<p style="color:var(--muted);padding:24px;text-align:center">브랜드검색 데이터 없음</p>';
@@ -4370,12 +4642,18 @@ function renderBrandView(rows) {
 
 function renderAll() {
   const rows = filteredRecords();
+  const brandRows = state.currentView === "brand" ? getBrandRows() : null;
+  const displayRows = brandRows || rows;
   const activeScopeLabels = [];
-  if (state.homeMedia !== "all") activeScopeLabels.push(homeMediaOptions[state.homeMedia]?.label ?? "");
-  if (state.homePromotion !== "all") activeScopeLabels.push(state.homePromotion);
+  if (state.currentView === "brand") {
+    activeScopeLabels.push("zinusinc.naver", "브랜드 검색");
+  } else {
+    if (state.homeMedia !== "all") activeScopeLabels.push(homeMediaOptions[state.homeMedia]?.label ?? "");
+    if (state.homePromotion !== "all") activeScopeLabels.push(state.homePromotion);
+  }
   const activeScopeLabel = activeScopeLabels.length ? ` · ${activeScopeLabels.join(" · ")}` : "";
   document.querySelector("#sourceDate").textContent = `${state.range.dateStart || "-"} ~ ${state.range.dateEnd || "-"}${activeScopeLabel}`;
-  document.querySelector("#rowCount").textContent = `${formatNumber(rows.length)}개 집계 / 원본 ${formatNumber(state.data.rowCount)}행`;
+  document.querySelector("#rowCount").textContent = `${formatNumber(displayRows.length)}개 집계 / 원본 ${formatNumber(state.data.rowCount)}행`;
   if (state.currentView === "home") {
     renderKpis(rows);
     renderHomeWidgets(rows);
@@ -4390,7 +4668,7 @@ function renderAll() {
   } else if (state.currentView === "keyword") {
     renderKeywordReport();
   } else if (state.currentView === "brand") {
-    renderBrandView(rows);
+    renderBrandView(brandRows);
   }
   renderFilterChips();
 }

@@ -8,9 +8,10 @@ from pathlib import Path
 import openpyxl
 
 
-ROOT = Path(r"C:\Users\user\Documents\Craude Dash board\raw data_media")
+ROOT = Path(__file__).resolve().parents[1] / "raw data_media"
 OUT_JSON = Path("data/dashboard-data.json")
 OUT_JS = Path("data/dashboard-data.js")
+SEARCH_CONVERSION_TYPE = "구매완료"
 
 
 def to_number(value):
@@ -138,7 +139,7 @@ def infer_promotion(campaign, group, creative, row_type):
 
 def infer_channel(campaign, group, creative):
     source = f"{campaign or ''}_{group or ''}_{creative or ''}"
-    for candidate in ["쇼핑프로모션", "쇼핑검색", "스마트채널", "네이티브", "카탈로그", "ADVoost 소재", "애드부스트", "디맨드젠", "파워링크", "DA", "피드형", "검색"]:
+    for candidate in ["쇼핑프로모션", "스마트채널", "네이티브", "카탈로그", "ADVoost 소재", "애드부스트", "디맨드젠", "검색", "파워링크", "DA", "피드형"]:
         if candidate in source:
             return candidate
     return "기타"
@@ -238,6 +239,11 @@ def search_key(row):
     )
 
 
+def is_purchase_conversion(row):
+    # 검색광고 전환 보고서는 구매완료만 성과로 집계한다.
+    return str(row.get("전환 유형", "")).strip() == SEARCH_CONVERSION_TYPE
+
+
 def parse_naver_search_account(account_dir, account_name, performance_patterns, conversion_patterns):
     conversions = defaultdict(lambda: {"purchases": 0.0, "revenue": 0.0})
     records = []
@@ -249,7 +255,7 @@ def parse_naver_search_account(account_dir, account_name, performance_patterns, 
         header, rows, _ = read_csv_table(path)
         for raw in rows:
             row = row_dict(header, raw)
-            if row.get("전환 유형") != "구매완료":
+            if not is_purchase_conversion(row):
                 continue
             date = normalize_date(row.get("일별"))
             key = (row.get("캠페인", ""), row.get("광고그룹", ""), row.get("소재", ""), row.get("키워드", ""), date)
@@ -480,11 +486,19 @@ def aggregate_compact_records(records):
         "type",
     ]
     bucket = {}
+
+    def is_brand_search(row):
+        return (
+            row.get("account") == "zinusinc.naver"
+            and re.match(r"^(?:4\.)?\s*브랜드\s*검색$", str(row.get("campaign", "")).strip())
+        )
+
     for row in records:
-        key = tuple(row.get(dim, "") for dim in dimensions)
+        creative_key = row.get("creative", "") if is_brand_search(row) else ""
+        key = tuple(row.get(dim, "") for dim in dimensions) + (creative_key,)
         if key not in bucket:
             bucket[key] = {dim: row.get(dim, "") for dim in dimensions}
-            bucket[key]["creative"] = ""
+            bucket[key]["creative"] = creative_key
             bucket[key]["keyword"] = ""
             bucket[key].update(empty_metrics())
             bucket[key]["hasHour"] = False
@@ -495,15 +509,15 @@ def aggregate_compact_records(records):
 
 
 def aggregate_keyword_records(records):
-    # date 포함 집계 (기간 필터 지원) — 불필요한 메타필드 제거로 크기 절감
     dimensions = [
         "date",
         "media",
-        "account",
+        "promotion",
+        "objective",
+        "target",
+        "keyword",
         "campaign",
         "group",
-        "channel",
-        "keyword",
     ]
     bucket = {}
     for row in records:
@@ -512,7 +526,7 @@ def aggregate_keyword_records(records):
         key = tuple(row.get(dim, "") for dim in dimensions)
         if key not in bucket:
             bucket[key] = {dim: row.get(dim, "") for dim in dimensions}
-            # 키워드 보고서에서 미사용 메타 필드는 저장하지 않음 (크기 절감)
+            bucket[key]["channel"] = row.get("channel", "키워드")
             bucket[key].update(empty_metrics())
         add_metrics(bucket[key], row)
     return list(bucket.values())
