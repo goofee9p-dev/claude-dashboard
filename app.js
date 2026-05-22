@@ -4240,20 +4240,32 @@ function renderCreativeCalendar(creatives) {
   let activePreviewTarget = null;
   let floatingPreviewBtn = null;
 
+  const closeCalendarPreview = (calEvent) => {
+    if (!calEvent) return;
+    calEvent.classList.remove("is-active");
+    const pop = calEvent.querySelector(".cal-event-preview-popover");
+    if (pop) {
+      pop.style.display = "";
+      pop.style.top = "";
+      pop.style.left = "";
+      pop.style.visibility = "";
+    }
+  };
+
   const toggleCalendarPreview = (event) => {
     const target = event.target.closest(".cal-event[data-calendar-preview]");
     if (!target || !container.contains(target)) return;
 
     // 이미 활성화된 미리보기를 클릭하면 닫기
     if (target.classList.contains("is-active")) {
+      closeCalendarPreview(target);
       activePreviewTarget = null;
-      target.classList.remove("is-active");
       return;
     }
 
     // 다른 활성화된 미리보기는 닫기
     if (activePreviewTarget && activePreviewTarget !== target) {
-      activePreviewTarget.classList.remove("is-active");
+      closeCalendarPreview(activePreviewTarget);
     }
 
     activePreviewTarget = target;
@@ -4263,34 +4275,35 @@ function renderCreativeCalendar(creatives) {
     const popover = target.querySelector(".cal-event-preview-popover");
     if (popover) {
       const rect = target.getBoundingClientRect();
-      popover.style.display = "block";
 
-      // 임시로 top: 0 설정하여 크기 계산
-      popover.style.top = "0";
+      // 위치 계산을 위해 보이지 않게 일단 표시
+      popover.style.visibility = "hidden";
+      popover.style.display = "block";
+      popover.style.top = "0px";
+      popover.style.left = "0px";
+
       const popoverRect = popover.getBoundingClientRect();
 
-      // 이벤트 위쪽에 표시, 아래 여백 고려
+      // 이벤트 위쪽에 표시, 공간이 없으면 아래
       let top = rect.top - popoverRect.height - 8;
-
-      // 화면 상단을 넘으면 아래에 표시
-      if (top < 0) {
+      if (top < 10) {
         top = rect.bottom + 8;
       }
-
-      // 좌측 정렬
-      let left = rect.left;
-
-      // 화면 우측을 넘으면 우측 정렬
-      const maxRight = left + popoverRect.width;
-      if (maxRight > window.innerWidth) {
-        left = window.innerWidth - popoverRect.width - 10;
+      // 화면 하단도 넘으면 위로 클램프
+      if (top + popoverRect.height > window.innerHeight - 10) {
+        top = Math.max(10, window.innerHeight - popoverRect.height - 10);
       }
 
-      // 최소 좌측 마진
+      // 좌측 정렬, 화면 우측 넘으면 조정
+      let left = rect.left;
+      if (left + popoverRect.width > window.innerWidth - 10) {
+        left = window.innerWidth - popoverRect.width - 10;
+      }
       if (left < 10) left = 10;
 
       popover.style.top = top + "px";
       popover.style.left = left + "px";
+      popover.style.visibility = "";
     }
   };
 
@@ -4340,11 +4353,10 @@ function renderCreativeCalendar(creatives) {
       }
     } else if (activePreviewTarget) {
       // 팝오버 또는 달력 내부가 아닌 곳을 클릭하면 닫기
-      const popover = activePreviewTarget.querySelector(".cal-event-preview-popover");
       if (!e.target.closest(".cal-event[data-calendar-preview]") &&
           !e.target.closest(".cal-event-preview-popover") &&
           e.target !== floatingPreviewBtn) {
-        activePreviewTarget.classList.remove("is-active");
+        closeCalendarPreview(activePreviewTarget);
         activePreviewTarget = null;
       }
     }
@@ -4353,7 +4365,7 @@ function renderCreativeCalendar(creatives) {
   // ESC 키로 미리보기 닫기
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && activePreviewTarget) {
-      activePreviewTarget.classList.remove("is-active");
+      closeCalendarPreview(activePreviewTarget);
       activePreviewTarget = null;
     }
   });

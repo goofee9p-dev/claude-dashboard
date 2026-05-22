@@ -70,6 +70,13 @@ body {
   font-size: 23px;
 }
 
+.sidebar-logo {
+  width: 110px;
+  height: auto;
+  display: block;
+  margin-bottom: 4px;
+}
+
 .sidebar-title span {
   color: #4a6e80;
   font-size: 12px;
