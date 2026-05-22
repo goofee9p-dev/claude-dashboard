@@ -495,6 +495,7 @@ def aggregate_compact_records(records):
 
 
 def aggregate_keyword_records(records):
+    # date 포함 집계 (기간 필터 지원) — 불필요한 메타필드 제거로 크기 절감
     dimensions = [
         "date",
         "media",
@@ -502,9 +503,6 @@ def aggregate_keyword_records(records):
         "campaign",
         "group",
         "channel",
-        "promotion",
-        "objective",
-        "target",
         "keyword",
     ]
     bucket = {}
@@ -514,13 +512,8 @@ def aggregate_keyword_records(records):
         key = tuple(row.get(dim, "") for dim in dimensions)
         if key not in bucket:
             bucket[key] = {dim: row.get(dim, "") for dim in dimensions}
-            bucket[key]["creative"] = ""
-            bucket[key]["creativeTheme"] = ""
-            bucket[key]["type"] = row.get("type", "")
+            # 키워드 보고서에서 미사용 메타 필드는 저장하지 않음 (크기 절감)
             bucket[key].update(empty_metrics())
-            bucket[key]["hasHour"] = False
-            bucket[key]["hour"] = None
-            bucket[key]["hourLabel"] = "일 단위"
         add_metrics(bucket[key], row)
     return list(bucket.values())
 
