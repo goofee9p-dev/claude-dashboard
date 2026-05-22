@@ -4250,16 +4250,18 @@ function renderCreativeCalendar(creatives) {
   let activePreviewTarget = null;
   let floatingPreviewBtn = null;
 
+  // 백드롭 element (한 번만 만들고 재사용)
+  let backdrop = document.querySelector(".cal-preview-backdrop");
+  if (!backdrop) {
+    backdrop = document.createElement("div");
+    backdrop.className = "cal-preview-backdrop";
+    document.body.appendChild(backdrop);
+  }
+
   const closeCalendarPreview = (calEvent) => {
     if (!calEvent) return;
     calEvent.classList.remove("is-active");
-    const pop = calEvent.querySelector(".cal-event-preview-popover");
-    if (pop) {
-      pop.style.display = "";
-      pop.style.top = "";
-      pop.style.left = "";
-      pop.style.visibility = "";
-    }
+    backdrop.classList.remove("is-visible");
   };
 
   const toggleCalendarPreview = (event) => {
@@ -4280,42 +4282,16 @@ function renderCreativeCalendar(creatives) {
 
     activePreviewTarget = target;
     target.classList.add("is-active");
-
-    // 고정 위치 팝오버 위치 계산
-    const popover = target.querySelector(".cal-event-preview-popover");
-    if (popover) {
-      const rect = target.getBoundingClientRect();
-
-      // 위치 계산을 위해 보이지 않게 일단 표시
-      popover.style.visibility = "hidden";
-      popover.style.display = "block";
-      popover.style.top = "0px";
-      popover.style.left = "0px";
-
-      const popoverRect = popover.getBoundingClientRect();
-
-      // 이벤트 위쪽에 표시, 공간이 없으면 아래
-      let top = rect.top - popoverRect.height - 8;
-      if (top < 10) {
-        top = rect.bottom + 8;
-      }
-      // 화면 하단도 넘으면 위로 클램프
-      if (top + popoverRect.height > window.innerHeight - 10) {
-        top = Math.max(10, window.innerHeight - popoverRect.height - 10);
-      }
-
-      // 좌측 정렬, 화면 우측 넘으면 조정
-      let left = rect.left;
-      if (left + popoverRect.width > window.innerWidth - 10) {
-        left = window.innerWidth - popoverRect.width - 10;
-      }
-      if (left < 10) left = 10;
-
-      popover.style.top = top + "px";
-      popover.style.left = left + "px";
-      popover.style.visibility = "";
-    }
+    backdrop.classList.add("is-visible");
   };
+
+  // 백드롭 클릭 시 닫기
+  backdrop.addEventListener("click", () => {
+    if (activePreviewTarget) {
+      closeCalendarPreview(activePreviewTarget);
+      activePreviewTarget = null;
+    }
+  });
 
   // 마우스 따라다니는 "소재 보기" 버튼
   container.addEventListener("mouseenter", (e) => {

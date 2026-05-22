@@ -3101,23 +3101,44 @@ tbody tr:hover {
 }
 .cal-event-preview-popover {
   position: fixed;
-  z-index: 999;
-  width: min(680px, 70vw);
-  padding: 10px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  z-index: 9999;
+  width: min(720px, 90vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 16px;
   border: 1px solid rgba(210, 220, 226, 0.95);
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 16px 40px rgba(30, 45, 60, 0.22);
+  box-shadow: 0 24px 60px rgba(30, 45, 60, 0.35);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(4px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition: opacity 0.15s ease, transform 0.15s ease;
   display: none;
+}
+
+/* 미리보기 활성화 시 어두운 백드롭 */
+.cal-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 25, 35, 0.5);
+  z-index: 9998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  display: none;
+}
+.cal-preview-backdrop.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  display: block;
 }
 /* 클릭 시에만 미리보기 표시 (hover 제거) */
 .cal-event.is-active .cal-event-preview-popover {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(-50%, -50%) scale(1);
   pointer-events: auto;
   display: block;
 }
