@@ -2805,6 +2805,40 @@ function renderPeriodComboChart(node, rows, metrics, view) {
   </svg>`;
 }
 
+/* ── 기간 보고서 전기간 대비 코멘트 ─────────────────────────── */
+function buildPeriodComment(periodRows, view) {
+  if (periodRows.length < 2) return "";
+  const cur  = periodRows[periodRows.length - 1];
+  const prev = periodRows[periodRows.length - 2];
+  const label = { daily: "전일", weekly: "전주", monthly: "전월" }[view] || "전기간";
+
+  const pctChg = (c, p) => (!p || p === 0) ? null : (c - p) / Math.abs(p) * 100;
+
+  const METRICS = [
+    { key: "cost",      label: "광고비",   toneDir: -1  },  // 감소가 좋음
+    { key: "clicks",    label: "클릭수",   toneDir:  1  },
+    { key: "purchases", label: "전환수",   toneDir:  1  },
+    { key: "revenue",   label: "전환매출", toneDir:  1  },
+    { key: "roas",      label: "ROAS",     toneDir:  1  },
+  ];
+
+  const chips = METRICS.map(({ key, label: ml, toneDir }) => {
+    const v = pctChg(cur[key] || 0, prev[key] || 0);
+    if (v === null) return null;
+    const abs = Math.abs(v);
+    const tone = abs < 1 ? "flat" : (v * toneDir > 0 ? "good" : "bad");
+    const sign = v > 0 ? "+" : (v < 0 ? "" : "");
+    const arrow = v > 1 ? "▲" : v < -1 ? "▼" : "−";
+    const pctStr = abs < 10 ? abs.toFixed(1) : Math.round(abs);
+    return `<span class="pc-chip pc-chip--${tone}">${ml}&thinsp;<b>${arrow}${sign}${pctStr}%</b></span>`;
+  }).filter(Boolean).join("");
+
+  return `<div class="period-comment-bar">
+    <span class="pc-period"><em>${cur.name}</em>&ensp;${label} 대비</span>
+    <div class="pc-chips">${chips}</div>
+  </div>`;
+}
+
 function renderPeriodReport(view, rows) {
   const meta = reportMeta[view] ?? reportMeta.daily;
   const periodRows = aggregatePeriodRows(rows, view);
@@ -2837,6 +2871,7 @@ function renderPeriodReport(view, rows) {
         <div class="report-combo-selectors">${selectors}</div>
       </header>
       <div id="${view}ReportChartCombo" class="chart report-chart report-chart--combo"></div>
+      ${buildPeriodComment(periodRows, view)}
     </article>`;
 
   renderPeriodComboChart(document.querySelector(`#${view}ReportChartCombo`), periodRows, metrics, view);
@@ -3563,12 +3598,12 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
       : "";
     return `<button type="button" class="brand-highlight-card ${tone}" ${previewAttrs}>
       <span class="brand-highlight-thumb">
-        ${imgSrc ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" />` : `<span class="brand-highlight-noimg">미리보기 없음</span>`}
+        ${imgSrc ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'brand-highlight-noimg\\'>이미지 없음</span>'" />` : `<span class="brand-highlight-noimg">이미지 없음</span>`}
       </span>
       <span class="brand-highlight-body">
         <span class="brand-highlight-label">${escapeHtml(label)}</span>
         <strong>${escapeHtml(value(item))}</strong>
-        <em title="${escapeAttribute(item.name)}">${escapeHtml(truncate(item.name, 34))}</em>
+        <em class="brand-highlight-name">${escapeHtml(item.name)}</em>
         <small>${escapeHtml(item.device)} · ${escapeHtml(metric)} · 클릭 ${escapeHtml(formatNumber(item.metrics.clicks))}</small>
       </span>
     </button>`;
@@ -3576,23 +3611,26 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
 
   const renderDeviceGroup = ({ key, label }) => {
     const deviceCards = cards.filter((c) => c.device === key);
-    const ctrRows = deviceCards.filter((c) => c.metrics.impressions > 0);
-    const revenueRows = deviceCards.filter((c) => c.metrics.revenue > 0 || c.metrics.cost > 0 || c.metrics.clicks > 0);
+    const highlightRows = deviceCards.filter((c) => c.metrics.revenue > 0);
+    const ctrRows = highlightRows.filter((c) => c.metrics.impressions > 0);
+    const revenueRows = highlightRows;
     const highlights = [
-      { label: "CTR Best", tone: "good", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => b.metrics.ctr - a.metrics.ctr)[0] },
-      { label: "CTR Worst", tone: "bad", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => a.metrics.ctr - b.metrics.ctr)[0] },
+      /* ── Best (상단 2개) ── */
       { label: "매출 Best", tone: "good", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0] },
+      { label: "CTR Best",  tone: "good", metric: "CTR",  value: (c) => formatPercent(c.metrics.ctr),   item: [...ctrRows].sort((a, b) => b.metrics.ctr - a.metrics.ctr)[0] },
+      /* ── Worst (하단 2개) ── */
       { label: "매출 Worst", tone: "bad", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => a.metrics.revenue - b.metrics.revenue)[0] },
+      { label: "CTR Worst",  tone: "bad", metric: "CTR",  value: (c) => formatPercent(c.metrics.ctr),   item: [...ctrRows].sort((a, b) => a.metrics.ctr - b.metrics.ctr)[0] },
     ].filter((entry) => entry.item);
     const total = sumBrandMetrics(brandRows.filter((row) => brandDeviceTag(row) === key));
     const body = highlights.length
       ? highlights.map(renderHighlightCard).join("")
-      : `<div class="brand-highlight-empty">표시할 ${escapeHtml(label)} 소재 성과가 없습니다.</div>`;
+      : `<div class="brand-highlight-empty">${escapeHtml(label)} 매출 발생 소재가 없습니다.</div>`;
 
     return `<section class="brand-highlight-device-group">
       <div class="brand-highlight-device-head">
         <span class="brand-device-pill ${key.toLowerCase()}">${escapeHtml(label)}</span>
-        <small>소재 ${escapeHtml(formatNumber(deviceCards.length))}개 · 클릭 ${escapeHtml(formatNumber(total.clicks))} · 매출 ${escapeHtml(formatMoney(total.revenue))}</small>
+        <small>매출 발생 소재 ${escapeHtml(formatNumber(highlightRows.length))}/${escapeHtml(formatNumber(deviceCards.length))}개 · 매출 ${escapeHtml(formatMoney(total.revenue))}</small>
       </div>
       <div class="brand-highlight-device-grid">${body}</div>
     </section>`;
@@ -3834,22 +3872,270 @@ function bindPromoFilter() {
   });
 }
 
+/* ── 소재 운영 달력 ─────────────────────────────────────────── */
+
+/**
+ * 소재명에서 운영 기간 파싱
+ * 형식 예시:
+ *   0525_소재명_0521            → 5/25 단일일
+ *   0523-0524_소재명_0520       → 5/23 ~ 5/24
+ *   0523~0524_소재명_0520       → 5/23 ~ 5/24 (~ 구분자)
+ *   0522 0~20시_소재명_0518     → 5/22 (0~20시)
+ *   0522 20~24시_소재명_0518    → 5/22 (20~24시)
+ *   0518 20시~0521_소재명_0518  → 5/18 20시 ~ 5/21
+ */
+function parseCreativeDateRange(creative, refYear) {
+  const year = refYear || 2026;
+  const raw = creative.name;
+
+  // 세팅일 suffix 제거: 마지막 _MMDD (4자리 숫자)
+  const nameCore = raw.replace(/_\d{4}$/, "");
+
+  const toDate = (mmdd) => {
+    const m = parseInt(mmdd.slice(0, 2), 10);
+    const d = parseInt(mmdd.slice(2, 4), 10);
+    return new Date(year, m - 1, d);
+  };
+
+  let startDate, endDate, timeLabel = "", displayName = "";
+
+  // 1) MMDD H시~MMDD_소재명  (크로스데이 시간포함)
+  let rx = nameCore.match(/^(\d{4})\s+(\d+시)~(\d{4})_(.+)/);
+  if (rx) {
+    startDate  = toDate(rx[1]);
+    endDate    = toDate(rx[3]);
+    timeLabel  = rx[2] + "~";
+    displayName = rx[4];
+  }
+
+  // 2) MMDD H~H시_소재명  (단일일 시간범위)
+  if (!startDate) {
+    rx = nameCore.match(/^(\d{4})\s+(\d+~\d+시)_(.+)/);
+    if (rx) {
+      startDate   = toDate(rx[1]);
+      endDate     = startDate;
+      timeLabel   = rx[2];
+      displayName = rx[3];
+    }
+  }
+
+  // 3) MMDD[-~]MMDD_소재명  (날짜 범위)
+  if (!startDate) {
+    rx = nameCore.match(/^(\d{4})[-~](\d{4})_(.+)/);
+    if (rx) {
+      startDate   = toDate(rx[1]);
+      endDate     = toDate(rx[2]);
+      displayName = rx[3];
+    }
+  }
+
+  // 4) MMDD_소재명  (단일일)
+  if (!startDate) {
+    rx = nameCore.match(/^(\d{4})_(.+)/);
+    if (rx) {
+      startDate   = toDate(rx[1]);
+      endDate     = startDate;
+      displayName = rx[2];
+    }
+  }
+
+  if (!startDate) return null;
+
+  return { startDate, endDate, timeLabel, displayName, device: creative.device, id: creative.id };
+}
+
+/** 달력 팔레트 (최대 8개 소재 개념) */
+const CAL_COLORS = [
+  { bg: "#d4f0eb", border: "#2ec4b6", text: "#1a7a72" },
+  { bg: "#fde8d8", border: "#f4845f", text: "#a04020" },
+  { bg: "#dde8fd", border: "#4a90d9", text: "#1c4f8a" },
+  { bg: "#fdf3cc", border: "#e2b93d", text: "#7a5800" },
+  { bg: "#ecddf7", border: "#9b59b6", text: "#5b1a8a" },
+  { bg: "#d8f5d4", border: "#27ae60", text: "#145a32" },
+  { bg: "#fde0e0", border: "#e74c3c", text: "#7b1010" },
+  { bg: "#e0f0ff", border: "#2980b9", text: "#0d3d6e" },
+];
+
+function renderCreativeCalendar(creatives) {
+  const container = document.querySelector("#brandCreativeCalendar");
+  if (!container) return;
+  if (!creatives || creatives.length === 0) {
+    container.innerHTML = `<p class="cal-empty">등록된 소재가 없습니다.</p>`;
+    return;
+  }
+
+  // 소재명 기준으로 중복 병합 (PC/MO 동일 개념 소재)
+  const eventMap = new Map(); // key = displayName+startDate
+  for (const c of creatives) {
+    const parsed = parseCreativeDateRange(c);
+    if (!parsed) continue;
+    const key = parsed.displayName + "_" + parsed.startDate.toDateString();
+    if (eventMap.has(key)) {
+      const ev = eventMap.get(key);
+      if (!ev.devices.includes(c.device)) ev.devices.push(c.device);
+    } else {
+      parsed.devices = [c.device];
+      eventMap.set(key, parsed);
+    }
+  }
+
+  const events = [...eventMap.values()];
+
+  // 색상 할당 (displayName 기준)
+  const nameColorMap = new Map();
+  let colorIdx = 0;
+  for (const ev of events) {
+    if (!nameColorMap.has(ev.displayName)) {
+      nameColorMap.set(ev.displayName, CAL_COLORS[colorIdx % CAL_COLORS.length]);
+      colorIdx++;
+    }
+    ev.color = nameColorMap.get(ev.displayName);
+  }
+
+  // 달력 범위 계산 (이벤트 기준)
+  const allDates = events.flatMap(e => [e.startDate, e.endDate]);
+  const minDate  = new Date(Math.min(...allDates));
+  const maxDate  = new Date(Math.max(...allDates));
+  // 월 기준으로 확장
+  const calStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  const calEnd   = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0);
+
+  // 주 단위로 분리
+  const weeks = [];
+  let cur = new Date(calStart);
+  // 첫 주 시작을 일요일로
+  cur.setDate(cur.getDate() - cur.getDay());
+  while (cur <= calEnd) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      week.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  // 이벤트 → 해당 주의 레인 할당
+  const dateMs = (d) => d.getTime();
+
+  const buildWeekEvents = (week) => {
+    const wStart = dateMs(week[0]);
+    const wEnd   = dateMs(week[6]);
+    // startDate 순으로 정렬해야 greedy 레인 배정이 최소 레인 수 보장
+    const active = events
+      .filter(e => dateMs(e.startDate) <= wEnd && dateMs(e.endDate) >= wStart)
+      .sort((a, b) => dateMs(a.startDate) - dateMs(b.startDate));
+
+    // 레인 배정 (greedy interval scheduling)
+    const lanes = []; // lanes[i] = endDate of last event in lane i
+    const assigned = active.map(ev => {
+      const lane = lanes.findIndex(end => end < dateMs(ev.startDate));
+      if (lane === -1) { lanes.push(dateMs(ev.endDate)); return lanes.length - 1; }
+      lanes[lane] = dateMs(ev.endDate);
+      return lane;
+    });
+    return active.map((ev, i) => ({ ev, lane: assigned[i] }));
+  };
+
+  // HTML 생성
+  const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+
+  let html = `<div class="cal-grid">`;
+
+  // 헤더 행 (월)
+  const headerMonth = `${calStart.getFullYear()}년 ${calStart.getMonth() + 1}월`;
+  html += `<div class="cal-month-header">${headerMonth}</div>`;
+
+  // 요일 헤더
+  html += `<div class="cal-week cal-dow-row">`;
+  DAY_KO.forEach((d, i) => {
+    html += `<div class="cal-dow ${i===0?"sun":i===6?"sat":""}">${d}</div>`;
+  });
+  html += `</div>`;
+
+  for (const week of weeks) {
+    const weekEvs = buildWeekEvents(week);
+    const maxLane  = weekEvs.length ? Math.max(...weekEvs.map(x => x.lane)) + 1 : 0;
+
+    html += `<div class="cal-week" style="--cal-lanes:${maxLane}">`;
+
+    // 날짜 숫자 행
+    html += `<div class="cal-date-row">`;
+    week.forEach((day, di) => {
+      const inMonth = day.getMonth() === minDate.getMonth() || day.getMonth() === maxDate.getMonth();
+      const isToday = day.toDateString() === new Date().toDateString();
+      html += `<div class="cal-date-cell ${inMonth?"":"out-month"} ${isToday?"today":""}">
+        <span class="cal-date-num ${di===0?"sun":di===6?"sat":""}">${day.getDate()}</span>
+      </div>`;
+    });
+    html += `</div>`;
+
+    // 이벤트 레인들
+    for (let lane = 0; lane < maxLane; lane++) {
+      html += `<div class="cal-lane-row">`;
+      const laneEvs = weekEvs.filter(x => x.lane === lane);
+
+      let col = 0; // 현재 채워진 열 (0-based)
+      for (const { ev } of laneEvs) {
+        const wStart = week[0];
+        const wEnd   = week[6];
+        // 이 주에서의 시작/끝 열
+        const colStart = Math.max(0, Math.round((Math.max(ev.startDate, wStart) - wStart) / 86400000));
+        const colEnd   = Math.min(6, Math.round((Math.min(ev.endDate,   wEnd)   - wStart) / 86400000));
+        const span     = colEnd - colStart + 1;
+
+        // 빈 공간
+        if (colStart > col) {
+          html += `<div class="cal-gap" style="grid-column:span ${colStart - col}"></div>`;
+        }
+        col = colEnd + 1;
+
+        const isStart = ev.startDate >= wStart;
+        const isEnd   = ev.endDate   <= wEnd;
+        const label   = `${ev.displayName}${ev.timeLabel ? " " + ev.timeLabel : ""}`;
+        const devTag  = ev.devices.map(d => `<span class="cal-dev-tag">${d}</span>`).join("");
+        html += `<div class="cal-event ${isStart?"ev-start":""} ${isEnd?"ev-end":""}"
+          style="grid-column:span ${span};background:${ev.color.bg};border-color:${ev.color.border};color:${ev.color.text}"
+          title="${escapeAttribute(label)}">
+          ${isStart ? `<span class="cal-ev-label">${escapeHtml(label)}${devTag}</span>` : ""}
+        </div>`;
+      }
+      // 나머지 빈 공간
+      if (col <= 6) {
+        html += `<div class="cal-gap" style="grid-column:span ${7 - col}"></div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`; // cal-week
+  }
+
+  html += `</div>`; // cal-grid
+  container.innerHTML = html;
+}
+
 /* ── 소재 갤러리 ───────────────────────────────────────────── */
 
 let _creativesCache = null;   // 로드된 소재 인덱스 캐시
 
 async function loadCreatives() {
   if (_creativesCache !== null) return _creativesCache;
+  try {
+    const res = await fetch("./creatives/index.json?_=" + Date.now());
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json)) {
+        _creativesCache = json;
+        return _creativesCache;
+      }
+    }
+  } catch {
+    // file:// 환경에서는 fetch가 막힐 수 있어 아래 내장 인덱스로 대체한다.
+  }
   if (Array.isArray(window.BRAND_CREATIVES)) {
     _creativesCache = window.BRAND_CREATIVES;
     return _creativesCache;
   }
-  try {
-    const res = await fetch("./creatives/index.json?_=" + Date.now());
-    _creativesCache = res.ok ? await res.json() : [];
-  } catch {
-    _creativesCache = [];
-  }
+  _creativesCache = [];
   return _creativesCache;
 }
 
@@ -4078,6 +4364,7 @@ function renderBrandView(rows) {
   loadCreatives().then((creatives) => {
     renderBrandCreativeHighlights(brandRows, creatives);
     renderCreativeGallery(brandRows, creatives);
+    renderCreativeCalendar(creatives);
   });
 }
 

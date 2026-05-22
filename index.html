@@ -225,17 +225,29 @@
           </header>
           <div id="brandCreativeHighlights" class="brand-creative-highlights"></div>
         </article>
+        <article class="panel creative-calendar-panel">
+          <header>
+            <div>
+              <p>Creative Schedule</p>
+              <h2>소재 운영 달력</h2>
+              <small class="basis">소재명 기준 운영 기간 자동 파싱</small>
+            </div>
+          </header>
+          <div id="brandCreativeCalendar" class="creative-calendar-wrap"></div>
+        </article>
         <section class="board-grid">
-          <article class="panel chart-panel span-2">
+          <article class="panel chart-panel span-2 report-chart-card">
             <header>
               <p>Brand Search Trend</p>
               <div>
                 <h2>브랜드검색 일자별 성과</h2>
                 <small class="basis" id="brandTrendBasis">기준: 선택 지표 일자별 집계</small>
               </div>
-              <div class="metric-control-bar metric-control-bar--single" aria-label="브랜드검색 성과 지표 선택">
-                <label for="brandMetricSelect">성과 지표</label>
-                <select id="brandMetricSelect" class="metric-control-select"></select>
+              <div class="report-combo-selectors brand-trend-selectors" aria-label="브랜드검색 성과 지표 선택">
+                <div class="report-combo-selector-item">
+                  <span class="combo-slot-dot" style="background:#3ecbc4;"></span>
+                  <select id="brandMetricSelect" class="report-metric-select"></select>
+                </div>
               </div>
             </header>
             <div id="brandTrendChart" class="chart combo-chart"></div>

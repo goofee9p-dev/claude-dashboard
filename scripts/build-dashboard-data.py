@@ -138,7 +138,7 @@ def infer_promotion(campaign, group, creative, row_type):
 
 def infer_channel(campaign, group, creative):
     source = f"{campaign or ''}_{group or ''}_{creative or ''}"
-    for candidate in ["쇼핑프로모션", "스마트채널", "네이티브", "카탈로그", "ADVoost 소재", "애드부스트", "디맨드젠", "검색", "파워링크", "DA", "피드형"]:
+    for candidate in ["쇼핑프로모션", "쇼핑검색", "스마트채널", "네이티브", "카탈로그", "ADVoost 소재", "애드부스트", "디맨드젠", "파워링크", "DA", "피드형", "검색"]:
         if candidate in source:
             return candidate
     return "기타"
@@ -499,6 +499,9 @@ def aggregate_keyword_records(records):
         "date",
         "media",
         "account",
+        "campaign",
+        "group",
+        "channel",
         "promotion",
         "objective",
         "target",
@@ -511,10 +514,7 @@ def aggregate_keyword_records(records):
         key = tuple(row.get(dim, "") for dim in dimensions)
         if key not in bucket:
             bucket[key] = {dim: row.get(dim, "") for dim in dimensions}
-            bucket[key]["campaign"] = ""
-            bucket[key]["group"] = ""
             bucket[key]["creative"] = ""
-            bucket[key]["channel"] = "키워드"
             bucket[key]["creativeTheme"] = ""
             bucket[key]["type"] = row.get("type", "")
             bucket[key].update(empty_metrics())

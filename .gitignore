@@ -1,0 +1,10 @@
+# 대용량 빌드 산출물 (GitHub 100MB 제한 초과)
+data/dashboard-data.js
+data/dashboard-data.json
+
+# Python 캐시
+scripts/__pycache__/
+*.pyc
+
+# 로그
+outputs/
