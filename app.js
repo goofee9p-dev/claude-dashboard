@@ -3664,13 +3664,14 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
 
   const renderHighlightCard = ({ label, tone, metric, value, item }) => {
     const imgSrc = item.file ? `./${item.file}` : "";
+    const encodedSrc = imgSrc ? `./${encodeCreativeSrc(item.file)}` : "";
     const caption = `${item.name}${item.device ? ` (${item.device})` : ""}`;
-    const previewAttrs = imgSrc
-      ? `data-preview-img="${escapeAttribute(imgSrc)}" data-preview-caption="${escapeAttribute(caption)}"`
+    const previewAttrs = encodedSrc
+      ? `data-preview-img="${escapeAttribute(encodedSrc)}" data-preview-caption="${escapeAttribute(caption)}"`
       : "";
     return `<button type="button" class="brand-highlight-card ${tone}" ${previewAttrs}>
       <span class="brand-highlight-thumb">
-        ${imgSrc ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'brand-highlight-noimg\\'>없음</span>'" />` : `<span class="brand-highlight-noimg">없음</span>`}
+        ${encodedSrc ? `<img src="${escapeAttribute(encodedSrc)}" alt="${escapeAttribute(caption)}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'brand-highlight-noimg\\'>없음</span>'" />` : `<span class="brand-highlight-noimg">없음</span>`}
       </span>
       <span class="brand-highlight-body">
         <span class="brand-highlight-label">${escapeHtml(label)}</span>
@@ -4033,6 +4034,15 @@ function creativeFilePath(creative) {
   return creative.file || (creative.capture ? `creatives/${creative.capture}` : "");
 }
 
+// 한글/공백/특수문자가 포함된 파일 경로 URL 인코딩 (슬래시는 유지)
+function encodeCreativeSrc(path) {
+  if (!path) return "";
+  return String(path)
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
 function creativeDeviceClass(device) {
   const key = String(device || "").toUpperCase();
   if (key === "PC") return "pc";
@@ -4200,7 +4210,7 @@ function renderCreativeCalendar(creatives) {
               <figure class="cal-preview-item">
                 <span class="brand-device-pill ${creativeDeviceClass(item.device)}">${escapeHtml(item.device || "공통")}</span>
                 ${item.file
-                  ? `<img src="${escapeAttribute(item.file)}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" loading="lazy" />`
+                  ? `<img src="${escapeAttribute(encodeCreativeSrc(item.file))}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" loading="lazy" />`
                   : `<span class="cal-preview-noimg">없음</span>`}
               </figure>
             `).join("")}
@@ -4459,7 +4469,7 @@ function renderCreativeGallery(brandRows, creatives) {
 
   tbody.innerHTML = cards.map((c) => {
     const m = c.metrics;
-    const imgSrc = c.file ? `./${c.file}` : "";
+    const imgSrc = c.file ? `./${encodeCreativeSrc(c.file)}` : "";
     const deviceClass = c.device === "PC" ? "pc" : c.device === "MO" ? "mo" : "common";
     const caption = `${c.name}${c.device ? ` (${c.device})` : ""}`;
     const previewAttrs = imgSrc
@@ -4580,7 +4590,7 @@ function showCreativeGroupPreview(items, caption, event) {
     <figure class="creative-hover-item">
       <span class="brand-device-pill ${creativeDeviceClass(item.device)}">${escapeHtml(item.device || "공통")}</span>
       ${item.file
-        ? `<img src="${escapeAttribute(item.file)}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" />`
+        ? `<img src="${escapeAttribute(encodeCreativeSrc(item.file))}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" />`
         : `<span class="creative-hover-noimg">없음</span>`}
     </figure>
   `).join("");
