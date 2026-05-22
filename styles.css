@@ -3171,10 +3171,31 @@ tbody tr:hover {
 }
 .cal-preview-item .brand-device-pill {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 1;
-  box-shadow: 0 6px 14px rgba(20, 42, 45, 0.14);
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(20, 42, 45, 0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.cal-preview-item .brand-device-pill.pc {
+  background: rgba(70, 145, 199, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.cal-preview-item .brand-device-pill.mo {
+  background: rgba(0, 184, 148, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.cal-preview-item .brand-device-pill.common {
+  background: rgba(85, 100, 115, 0.9);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
 }
 .cal-preview-noimg,
 .creative-hover-noimg {
