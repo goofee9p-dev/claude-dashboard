@@ -4284,6 +4284,9 @@ function renderCreativeCalendar(creatives) {
     activePreviewTarget = target;
     target.classList.add("is-active");
     backdrop.classList.add("is-visible");
+
+    // 모달 열릴 때 플로팅 버튼 즉시 숨김 (깜빡임 방지)
+    if (floatingPreviewBtn) floatingPreviewBtn.style.display = "none";
   };
 
   // 백드롭 클릭 시 닫기
@@ -4298,6 +4301,8 @@ function renderCreativeCalendar(creatives) {
   let lastHoveredEvent = null;
 
   container.addEventListener("mouseenter", (e) => {
+    // 모달이 열려있으면 플로팅 버튼 표시 안 함
+    if (activePreviewTarget) return;
     const target = e.target.closest(".cal-event[data-calendar-preview]");
     if (!target) return;
     lastHoveredEvent = target;
@@ -4317,6 +4322,11 @@ function renderCreativeCalendar(creatives) {
   }, true);
 
   container.addEventListener("mousemove", (e) => {
+    // 모달이 열려있으면 플로팅 버튼 숨김 유지
+    if (activePreviewTarget) {
+      if (floatingPreviewBtn) floatingPreviewBtn.style.display = "none";
+      return;
+    }
     const target = e.target.closest(".cal-event[data-calendar-preview]");
     if (!target || !floatingPreviewBtn) return;
     lastHoveredEvent = target;
