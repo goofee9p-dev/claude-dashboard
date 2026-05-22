@@ -68,5 +68,19 @@ window.BRAND_CREATIVES = [
     "device": "MO",
     "date": "2026-05-22",
     "file": "creatives/captures/0525_패밀리페스타라스트위크+스페셜오딜_0521_MO.png"
+  },
+  {
+    "id": "nad-a001-04-000000527539199",
+    "name": "0526-0527_패밀리페스타+오집패밀리_0522",
+    "device": "PC",
+    "date": "2026-05-22",
+    "file": "creatives/captures/0526-0527_패밀리페스타+오집패밀리_0522_PC.png"
+  },
+  {
+    "id": "nad-a001-04-000000527543375",
+    "name": "0526-0527_패밀리페스타+오집패밀리_0522",
+    "device": "MO",
+    "date": "2026-05-22",
+    "file": "creatives/captures/0526-0527_패밀리페스타+오집패밀리_0522_MO.png"
   }
 ];
