@@ -3314,32 +3314,32 @@ tbody tr:hover {
   background: var(--bg);
 }
 .cal-preview-item .brand-device-pill {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 2;
-  padding: 4px 12px;
+  position: static;
+  align-self: flex-start;
+  margin-bottom: 6px;
+  padding: 4px 14px;
   font-size: 11px;
   font-weight: 800;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(20, 42, 45, 0.25);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
 }
 .cal-preview-item .brand-device-pill.pc {
-  background: rgba(70, 145, 199, 0.95);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(70, 145, 199, 0.18);
+  color: #4691c7;
+  border: 1px solid rgba(70, 145, 199, 0.4);
 }
 .cal-preview-item .brand-device-pill.mo {
-  background: rgba(0, 184, 148, 0.95);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(62, 203, 196, 0.18);
+  color: #3ecbc4;
+  border: 1px solid rgba(62, 203, 196, 0.4);
 }
 .cal-preview-item .brand-device-pill.common {
-  background: rgba(85, 100, 115, 0.9);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(143, 160, 176, 0.18);
+  color: #8fa0b0;
+  border: 1px solid rgba(143, 160, 176, 0.4);
+}
+.cal-preview-item {
+  display: flex;
+  flex-direction: column;
 }
 .cal-preview-noimg,
 .creative-hover-noimg {
