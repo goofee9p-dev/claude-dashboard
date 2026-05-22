@@ -69,6 +69,11 @@
           <span class="nav-icon"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
           키워드 보고서
         </button>
+        <div class="side-nav-divider"></div>
+        <button type="button" class="side-nav-button is-special" data-view="monthClose">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+          월 예상 마감
+        </button>
       </nav>
     </aside>
 
@@ -358,7 +363,8 @@
                 <small class="basis" id="promotionAnalysisBasis">기준: 기준 지표 합계</small>
               </div>
             </header>
-            <div id="promotionAnalysisChart" class="chart comparison-chart"></div>
+            <div id="promotionAnalysisChart" class="chart comparison-chart stacked-chart"></div>
+            <div id="promotionMediaLegend" class="promotion-media-legend"></div>
           </article>
           <article class="panel chart-panel">
             <header>
@@ -371,6 +377,19 @@
             <div id="promotionMediaMixChart" class="chart pie-chart"></div>
           </article>
         </section>
+        <article class="panel promotion-detail-panel" id="promoChipDetailPanel" hidden>
+          <header>
+            <p>Promotion Detail</p>
+            <div>
+              <h2 id="promoChipDetailTitle">프로모션 상세</h2>
+              <small class="basis" id="promoChipDetailBasis">프로모션 칩을 클릭하면 매체/캠페인 상세가 표시됩니다</small>
+            </div>
+            <button type="button" class="promotion-detail-close" id="promoChipDetailClose" aria-label="닫기">×</button>
+          </header>
+          <div class="table-wrap">
+            <table class="data-table" id="promoChipDetailTable"></table>
+          </div>
+        </article>
       </section>
 
       <section class="view-section" data-view-panel="daily">
@@ -534,6 +553,109 @@
               <tbody></tbody>
             </table>
           </div>
+        </section>
+      </section>
+
+      <!-- 월 예상 마감 View -->
+      <section class="view-section month-close-view" data-view-panel="monthClose">
+        <!-- 월 선택 + 서브탭 -->
+        <div class="month-close-toolbar">
+          <div class="month-close-month-picker">
+            <label for="monthCloseSelect">기준 월</label>
+            <select id="monthCloseSelect"></select>
+          </div>
+          <nav class="month-close-tabs" id="monthCloseTabs" aria-label="월 예상 마감 서브탭">
+            <button type="button" class="month-close-tab is-active" data-mc-tab="summary">광고 운영 총계</button>
+            <button type="button" class="month-close-tab" data-mc-tab="kpi">KPI 달성률</button>
+            <button type="button" class="month-close-tab" data-mc-tab="channels">광고비 소진 예상</button>
+            <button type="button" class="month-close-tab" data-mc-tab="yoy">YoY 비교</button>
+            <button type="button" class="month-close-tab" data-mc-tab="mom">MoM 비교</button>
+          </nav>
+        </div>
+
+        <!-- 1. 광고 운영 총계 -->
+        <section class="mc-page is-active" data-mc-page="summary">
+          <article class="panel mc-summary-panel">
+            <header>
+              <p id="mcSummaryEyebrow">5월 광고 운영 총계</p>
+              <div>
+                <h2>브랜딩 / 퍼포먼스(상시, 프로모션 - 네이버 / 오늘의집 / 기타 외부몰) 캠페인</h2>
+                <small class="basis" id="mcSummaryBasis">출처: 지누스 매체별 데이터 · 잔여일자 예상 데이터 반영</small>
+              </div>
+            </header>
+            <div class="mc-summary-grid">
+              <div class="mc-summary-kpis" id="mcSummaryKpis"></div>
+              <div class="mc-summary-donuts" id="mcSummaryDonuts"></div>
+            </div>
+            <div class="mc-summary-legend" id="mcSummaryLegend"></div>
+          </article>
+        </section>
+
+        <!-- 2. KPI 달성률 -->
+        <section class="mc-page" data-mc-page="kpi">
+          <article class="panel">
+            <header>
+              <p id="mcKpiEyebrow">5월 광고 KPI 달성률</p>
+              <div>
+                <h2>SA / DA ROAS · DA 클릭수</h2>
+                <small class="basis">목표 vs 달성 · 출처: 지누스 매체별 데이터</small>
+              </div>
+            </header>
+            <div class="mc-kpi-grid" id="mcKpiCharts"></div>
+            <div class="mc-kpi-table-wrap">
+              <table class="data-table mc-kpi-table" id="mcKpiTable"></table>
+            </div>
+          </article>
+        </section>
+
+        <!-- 3. 전체 광고비 소진 예상 -->
+        <section class="mc-page" data-mc-page="channels">
+          <article class="panel">
+            <header>
+              <p id="mcChannelsEyebrow">5월 전체 광고비 소진 예상</p>
+              <div>
+                <h2>프로모션별 채널 운영: 각 플랫폼별 프로모션 진행 및 총 성과</h2>
+                <small class="basis" id="mcChannelsBasis">매체별 / 상품별 집계</small>
+              </div>
+            </header>
+            <div class="table-wrap mc-channels-table-wrap">
+              <table class="data-table mc-channels-table" id="mcChannelsTable"></table>
+            </div>
+          </article>
+        </section>
+
+        <!-- 4. YoY 비교 -->
+        <section class="mc-page" data-mc-page="yoy">
+          <article class="panel">
+            <header>
+              <p>YoY 성과 비교</p>
+              <div>
+                <h2 id="mcYoyTitle">전년 동월 대비 성과</h2>
+                <small class="basis" id="mcYoyBasis">출처: 지누스 매체별 데이터</small>
+              </div>
+            </header>
+            <div class="mc-compare-grid" id="mcYoyCharts"></div>
+            <div class="mc-compare-table-wrap">
+              <table class="data-table mc-compare-table" id="mcYoyTable"></table>
+            </div>
+          </article>
+        </section>
+
+        <!-- 5. MoM 비교 -->
+        <section class="mc-page" data-mc-page="mom">
+          <article class="panel">
+            <header>
+              <p>MoM 성과 비교 (3개월)</p>
+              <div>
+                <h2 id="mcMomTitle">최근 3개월 성과 추이</h2>
+                <small class="basis" id="mcMomBasis">예상마감 기준</small>
+              </div>
+            </header>
+            <div class="mc-compare-grid" id="mcMomCharts"></div>
+            <div class="mc-compare-table-wrap">
+              <table class="data-table mc-compare-table" id="mcMomTable"></table>
+            </div>
+          </article>
         </section>
       </section>
     </main>

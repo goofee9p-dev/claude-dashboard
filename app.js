@@ -80,6 +80,22 @@ const state = {
   keywordType: "파워링크",
   currentView: "home",
   homeMedia: "all",
+  // 각 view 별 매체 선택값 독립 저장
+  viewMedia: {
+    home: "all",
+    daily: "all",
+    weekly: "all",
+    monthly: "all",
+    media: "all",
+    promotion: "all",
+    keyword: "all",
+    brand: "all",
+    monthClose: "all",
+  },
+  monthClose: {
+    month: "",       // YYYY-MM
+    subTab: "summary",
+  },
   homePromotion: "all",
   brandMetric: "clicks",
   brandCreativeDevice: "all",
@@ -183,6 +199,7 @@ const viewMeta = {
   brand: ["브랜드 검색", "브랜드 검색 캠페인의 노출, 클릭, 전환 흐름을 확인합니다."],
   promotion: ["프로모션 보고서", "프로모션별 성과와 매체 기여도를 확인합니다."],
   keyword: ["키워드 보고서", "기간 기준 키워드 매출 TOP10, ROAS 고효율 키워드와 상세를 확인합니다."],
+  monthClose: ["월 예상 마감", "월 단위 예상 마감 기준 광고 운영 보고서 (광고주 전달용)."],
 };
 
 function formatMoney(value) {
@@ -579,6 +596,15 @@ function keywordMediaButton(key) {
 function renderMediaQuickFilter() {
   const wrap = document.querySelector("#mediaQuickFilter");
   if (!wrap) return;
+  const parent = wrap.closest(".quick-media-filter");
+  // 월 예상 마감 view에서는 매체 필터 자체를 숨김
+  if (state.currentView === "monthClose") {
+    wrap.innerHTML = "";
+    if (parent) parent.style.display = "none";
+    return;
+  } else if (parent) {
+    parent.style.display = "";
+  }
   if (state.currentView === "keyword") {
     wrap.innerHTML = `<div class="media-quick-row is-children">${keywordMediaOrder.map(keywordMediaButton).join("")}</div>`;
     return;
@@ -2527,6 +2553,52 @@ function renderHeatmap(container, rows, metric) {
   </svg>`;
 }
 
+/* 매체별 스택 가로 막대 차트 (프로모션 보고서용)
+ * rowsByGroup: [{ name: '프로모션명', segments: [{ media: '...', value: 123 }, ...], total: 123 }]
+ */
+function renderStackedBarChart(node, rowsByGroup, metric, options = {}) {
+  if (!node) return;
+  const width = options.width ?? 720;
+  const height = options.height ?? Math.max(360, rowsByGroup.length * 36 + 60);
+  const padding = { top: 18, right: 60, bottom: 36, left: options.leftPadding ?? 200 };
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  const max = Math.max(1, ...rowsByGroup.map((r) => r.total || 0));
+
+  const rowHeight = innerHeight / Math.max(rowsByGroup.length, 1);
+
+  const bars = rowsByGroup.map((row, idx) => {
+    const y = padding.top + idx * rowHeight;
+    const totalWidth = ((row.total || 0) / max) * innerWidth;
+    let runningX = padding.left;
+    const segs = (row.segments || []).map((seg) => {
+      const segWidth = ((seg.value || 0) / max) * innerWidth;
+      const x = runningX;
+      runningX += segWidth;
+      const detail = `${row.name} · ${seg.media} ${metricMeta[metric].label}: ${formatDetailed(seg.value || 0, metric)}`;
+      return `<rect class="stacked-bar-seg" x="${x}" y="${y + 6}" width="${Math.max(segWidth, 0)}" height="${Math.max(rowHeight - 10, 4)}" fill="${mediaColor(seg.media)}" data-tooltip="${escapeAttribute(detail)}">
+        <title>${escapeHtml(detail)}</title>
+      </rect>`;
+    }).join("");
+    const labelText = `${svgMultilineLabel(row.name, padding.left - 10, y + rowHeight * 0.58, {
+      firstLineLimit: options.firstLineLimit ?? 18,
+      secondLineLimit: options.secondLineLimit ?? 22,
+    })}`;
+    const totalLabel = `<text class="chart-label" x="${padding.left + totalWidth + 6}" y="${y + rowHeight * 0.6}">${formatShort(row.total || 0, metric)}</text>`;
+    return labelText + segs + totalLabel;
+  }).join("");
+
+  const grid = [0, 0.5, 1].map((ratio) => {
+    const x = padding.left + ratio * innerWidth;
+    return `<line class="grid-line" x1="${x}" y1="${padding.top}" x2="${x}" y2="${height - padding.bottom}"></line>`;
+  }).join("");
+
+  node.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${metricMeta[metric].label} 매체별 막대 차트">
+    ${grid}
+    ${bars}
+  </svg>`;
+}
+
 function renderBarChart(node, rows, metric, options = {}) {
   const width = options.width ?? 520;
   const height = options.height ?? 290;
@@ -3228,6 +3300,75 @@ function metricValueRow(label, metrics, isTotal = false) {
   `;
 }
 
+// 매체 색상 범례 (프로모션 보고서)
+function renderPromotionMediaLegend(stackedRows) {
+  const legend = document.querySelector("#promotionMediaLegend");
+  if (!legend) return;
+  const mediaSet = new Map();
+  for (const r of stackedRows) {
+    for (const seg of (r.segments || [])) {
+      if (!mediaSet.has(seg.media)) mediaSet.set(seg.media, 0);
+      mediaSet.set(seg.media, mediaSet.get(seg.media) + (seg.value || 0));
+    }
+  }
+  const items = [...mediaSet.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([media]) => `<span class="promo-legend-item"><span class="promo-legend-dot" style="background:${mediaColor(media)}"></span>${escapeHtml(media)}</span>`)
+    .join("");
+  legend.innerHTML = items;
+}
+
+// 프로모션 칩 클릭 시 상세표
+let activePromoChipDetail = null;
+function renderPromotionDetailPanel(promoRows, activePromotions) {
+  const panel = document.querySelector("#promoChipDetailPanel");
+  if (!panel) return;
+  if (!activePromoChipDetail || !activePromotions.includes(activePromoChipDetail)) {
+    panel.hidden = true;
+    return;
+  }
+  const promotion = activePromoChipDetail;
+  const filtered = promoRows.filter((r) => r.promotion === promotion);
+  if (!filtered.length) {
+    panel.hidden = true;
+    return;
+  }
+
+  document.querySelector("#promoChipDetailTitle").textContent = promotion;
+  document.querySelector("#promoChipDetailBasis").textContent = `${promotion} · 매체별 집계 (행: ${filtered.length.toLocaleString("ko-KR")})`;
+
+  // 매체별 집계 + 캠페인별 집계
+  const byMedia = aggregate(filtered, "media");
+  const byCampaign = aggregate(filtered, "campaign").slice(0, 30);
+
+  const head = `<thead><tr>
+    <th>구분</th><th>이름</th>
+    <th>노출</th><th>클릭</th><th>CTR</th>
+    <th>비용</th><th>전환</th><th>매출</th><th>ROAS</th>
+  </tr></thead>`;
+
+  const rowHtml = (label, r) => `<tr>
+    <td>${escapeHtml(label)}</td>
+    <td>${escapeHtml(r.name || "-")}</td>
+    <td>${formatNumber(r.impressions || 0)}</td>
+    <td>${formatNumber(r.clicks || 0)}</td>
+    <td>${formatPercent(r.ctr || 0)}</td>
+    <td>${formatPlainMoney(r.cost || 0)}</td>
+    <td>${formatNumber(r.purchases || 0)}</td>
+    <td>${formatPlainMoney(r.revenue || 0)}</td>
+    <td>${formatRoas(r.roas || 0)}</td>
+  </tr>`;
+
+  const body = `<tbody>
+    ${byMedia.map((r) => rowHtml("매체", r)).join("")}
+    ${byCampaign.length ? `<tr class="table-sep"><td colspan="9">캠페인별 (상위 30개)</td></tr>` : ""}
+    ${byCampaign.map((r) => rowHtml("캠페인", r)).join("")}
+  </tbody>`;
+
+  document.querySelector("#promoChipDetailTable").innerHTML = head + body;
+  panel.hidden = false;
+}
+
 function renderPromotionDetail(rows) {
   const select = document.querySelector("#promotionDetailSelect");
   const promotion = select.value || state.promotionDetail;
@@ -3342,16 +3483,40 @@ function renderCharts(rows) {
     state.promotionViewFilter = state.promotionViewFilter.filter((name) => availablePromotions.includes(name));
     const activePromotions = state.promotionViewFilter.length ? state.promotionViewFilter : availablePromotions;
     const promoRows = rows.filter((r) => activePromotions.includes(r.promotion) && (r.impressions || 0) > 0);
-    document.querySelector("#promotionAnalysisBasis").textContent = `기준: ${metric.basis}`;
-    renderBarChart(document.querySelector("#promotionAnalysisChart"), aggregate(promoRows, "promotion").slice(0, 15), state.metric, {
-      horizontal: true,
-      height: 410,
-      width: 840,
-      leftPadding: 220,
+    document.querySelector("#promotionAnalysisBasis").textContent = `기준: ${metric.basis} · 매체별 색상 분리`;
+
+    // 프로모션별 + 매체별로 집계해서 stacked bar 데이터 구성
+    const promoTotals = aggregate(promoRows, "promotion").slice(0, 15);
+    const top15Names = new Set(promoTotals.map((r) => r.name));
+    const promoMediaMap = new Map(); // name → { total, segments: [{media, value}] }
+    for (const r of promoRows) {
+      if (!top15Names.has(r.promotion)) continue;
+      const entry = promoMediaMap.get(r.promotion) || { name: r.promotion, total: 0, mediaMap: new Map() };
+      const v = r[state.metric] || 0;
+      entry.total += v;
+      entry.mediaMap.set(r.media, (entry.mediaMap.get(r.media) || 0) + v);
+      promoMediaMap.set(r.promotion, entry);
+    }
+    const stackedRows = promoTotals.map((p) => {
+      const entry = promoMediaMap.get(p.name);
+      if (!entry) return { name: p.name, total: p[state.metric] || 0, segments: [] };
+      const segments = [...entry.mediaMap.entries()]
+        .map(([media, value]) => ({ media, value }))
+        .sort((a, b) => b.value - a.value);
+      return { name: p.name, total: entry.total, segments };
+    });
+    renderStackedBarChart(document.querySelector("#promotionAnalysisChart"), stackedRows, state.metric, {
+      leftPadding: 200,
       firstLineLimit: 18,
       secondLineLimit: 22,
     });
     renderPieChart(document.querySelector("#promotionMediaMixChart"), aggregate(promoRows, "media"), state.metric);
+
+    // 매체 색상 범례
+    renderPromotionMediaLegend(stackedRows);
+
+    // 프로모션 칩 클릭 상세표
+    renderPromotionDetailPanel(promoRows, activePromotions);
     return;
   }
 
@@ -3861,16 +4026,26 @@ function renderPromoFilterBar() {
   if (sel.length === 0) {
     chipsEl.innerHTML = `<span class="promo-all-chip">기간 내 노출 프로모션 ${formatNumber(available.length)}개</span>`;
   } else {
-    chipsEl.innerHTML = sel.map((name) =>
-      `<span class="promo-chip">
-        <span class="promo-chip-name" title="${escapeAttribute(name)}">${escapeHtml(truncate(name, 22))}</span>
+    chipsEl.innerHTML = sel.map((name) => {
+      const isActive = activePromoChipDetail === name;
+      return `<span class="promo-chip${isActive ? " is-detail-active" : ""}" data-name="${escapeAttribute(name)}">
+        <button type="button" class="promo-chip-name" data-name="${escapeAttribute(name)}" title="${escapeAttribute(name)} (상세보기)">${escapeHtml(truncate(name, 22))}</button>
         <button class="promo-chip-remove" data-name="${escapeAttribute(name)}" aria-label="제거">×</button>
-      </span>`
-    ).join("");
+      </span>`;
+    }).join("");
     chipsEl.querySelectorAll(".promo-chip-remove").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (activePromoChipDetail === btn.dataset.name) activePromoChipDetail = null;
         state.promotionViewFilter = state.promotionViewFilter.filter((n) => n !== btn.dataset.name);
+        renderAll();
+      });
+    });
+    chipsEl.querySelectorAll(".promo-chip-name").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        activePromoChipDetail = activePromoChipDetail === name ? null : name;
         renderAll();
       });
     });
@@ -4203,20 +4378,6 @@ function renderCreativeCalendar(creatives) {
         const label   = `${ev.displayName}${ev.timeLabel ? " " + ev.timeLabel : ""}`;
         const devTag  = ev.devices.map(d => `<span class="cal-dev-tag">${d}</span>`).join("");
         const previewItems = ev.creatives;
-        const inlinePreview = previewItems.length ? `<div class="cal-event-preview-popover" aria-hidden="true">
-          <button type="button" class="cal-preview-close" aria-label="닫기">×</button>
-          <div class="cal-preview-title">${escapeHtml(label)}</div>
-          <div class="cal-preview-grid">
-            ${previewItems.map((item) => `
-              <figure class="cal-preview-item">
-                <span class="brand-device-pill ${creativeDeviceClass(item.device)}">${escapeHtml(item.device || "공통")}</span>
-                ${item.file
-                  ? `<img src="${escapeAttribute(encodeCreativeSrc(item.file))}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" loading="lazy" />`
-                  : `<span class="cal-preview-noimg">없음</span>`}
-              </figure>
-            `).join("")}
-          </div>
-        </div>` : "";
         const previewKey = `cal-${creativeCalendarPreviewGroups.size}`;
         creativeCalendarPreviewGroups.set(previewKey, {
           title: label,
@@ -4232,7 +4393,6 @@ function renderCreativeCalendar(creatives) {
           title="${escapeAttribute(label)}">
           ${isStart ? `<span class="cal-ev-label">${escapeHtml(label)}${devTag}</span>` : ""}
           ${previewItems.length ? `<button type="button" class="cal-preview-btn" aria-label="소재 보기">소재 보기</button>` : ""}
-          ${inlinePreview}
         </div>`;
       }
       // 나머지 빈 공간
@@ -4259,10 +4419,18 @@ function renderCreativeCalendar(creatives) {
     document.body.appendChild(backdrop);
   }
 
+  // 글로벌 popover element (body에 직접 있음, cal-event와 DOM 분리)
+  let calPopover = document.querySelector(".cal-event-preview-popover.cal-popover-global");
+  if (!calPopover) {
+    calPopover = document.createElement("div");
+    calPopover.className = "cal-event-preview-popover cal-popover-global";
+    document.body.appendChild(calPopover);
+  }
+
   const closeCalendarPreview = (calEvent) => {
-    if (!calEvent) return;
-    calEvent.classList.remove("is-active");
+    if (calEvent) calEvent.classList.remove("is-active");
     backdrop.classList.remove("is-visible");
+    calPopover.classList.remove("is-visible");
   };
 
   const toggleCalendarPreview = (event) => {
@@ -4284,6 +4452,28 @@ function renderCreativeCalendar(creatives) {
     activePreviewTarget = target;
     target.classList.add("is-active");
     backdrop.classList.add("is-visible");
+
+    // popover 내용 채우기
+    const previewKey = target.dataset.calendarPreview;
+    const group = creativeCalendarPreviewGroups.get(previewKey);
+    if (group) {
+      const items = group.items || [];
+      calPopover.innerHTML = `
+        <button type="button" class="cal-preview-close" aria-label="닫기">×</button>
+        <div class="cal-preview-title">${escapeHtml(group.title)}</div>
+        <div class="cal-preview-grid">
+          ${items.map((item) => `
+            <figure class="cal-preview-item">
+              <span class="brand-device-pill ${creativeDeviceClass(item.device)}">${escapeHtml(item.device || "공통")}</span>
+              ${item.file
+                ? `<img src="${escapeAttribute(encodeCreativeSrc(item.file))}" alt="${escapeAttribute(`${item.device || ""} ${item.displayName || item.name || "소재"}`.trim())}" loading="lazy" />`
+                : `<span class="cal-preview-noimg">없음</span>`}
+            </figure>
+          `).join("")}
+        </div>
+      `;
+      calPopover.classList.add("is-visible");
+    }
 
     // 모달 열릴 때 플로팅 버튼 즉시 숨김 (깜빡임 방지)
     if (floatingPreviewBtn) floatingPreviewBtn.style.display = "none";
@@ -4664,6 +4854,455 @@ function renderBrandView(rows = null) {
   });
 }
 
+/* ── 월 예상 마감 (Month Close) ────────────────────────────── */
+
+// 카테고리 분류: 브랜딩 / 퍼포먼스-상시 / 퍼포먼스-프로모션(네이버) / 퍼포먼스-프로모션(오늘의집/기타)
+// 색상: 대시보드 전체 팔레트(mint/blue/gold/rose)와 통일
+const MC_CATEGORIES = {
+  branding: { label: "브랜딩", color: "#8fa0b0" },                                      // muted
+  "perf-default": { label: "퍼포먼스 - 상시", color: "#d4c35a" },                       // gold
+  "perf-naver": { label: "퍼포먼스 - 프로모션(네이버)", color: "#3ecbc4" },             // mint
+  "perf-other": { label: "퍼포먼스 - 프로모션(오늘의집/기타 외부몰)", color: "#e09ea0" }, // rose
+};
+
+function monthCloseCategory(row) {
+  const camp = String(row.campaign || "");
+  const type = String(row.type || "");
+  // 브랜딩 (브랜드검색 캠페인 또는 type 브랜딩)
+  if (/브랜드\s*검색/.test(camp) || type === "브랜딩" || type === "브랜드") return "branding";
+
+  const promo = String(row.promotion || "");
+  const isPromotion = promo && promo !== "프로모션" && promo !== "기타";
+  if (!isPromotion) return "perf-default";
+
+  const media = String(row.media || "");
+  if (media.includes("네이버")) return "perf-naver";
+  return "perf-other";
+}
+
+// 월별로 행을 묶기 — Map<YYYY-MM, rows[]>
+function monthCloseGroupByMonth(records) {
+  const map = new Map();
+  for (const r of records) {
+    const date = String(r.date || "");
+    const ym = date.slice(0, 7);
+    if (!ym) continue;
+    if (!map.has(ym)) map.set(ym, []);
+    map.get(ym).push(r);
+  }
+  return map;
+}
+
+function monthCloseAllMonths() {
+  const records = state.data?.records || [];
+  const months = new Set();
+  for (const r of records) {
+    const ym = String(r.date || "").slice(0, 7);
+    if (ym) months.add(ym);
+  }
+  return [...months].sort((a, b) => b.localeCompare(a)); // 최신순
+}
+
+function monthCloseEnsureMonth() {
+  const months = monthCloseAllMonths();
+  if (!months.length) return "";
+  if (!state.monthClose.month || !months.includes(state.monthClose.month)) {
+    state.monthClose.month = months[0];
+  }
+  return state.monthClose.month;
+}
+
+function monthCloseMonthRows(ym) {
+  const records = state.data?.records || [];
+  return records.filter((r) => String(r.date || "").startsWith(ym));
+}
+
+function monthCloseAggregate(rows) {
+  let cost = 0, impressions = 0, clicks = 0, purchases = 0, revenue = 0;
+  for (const r of rows) {
+    cost += r.cost || 0;
+    impressions += r.impressions || 0;
+    clicks += r.clicks || 0;
+    purchases += r.purchases || 0;
+    revenue += r.revenue || 0;
+  }
+  const ctr = impressions ? clicks / impressions : 0;
+  const cpc = clicks ? cost / clicks : 0;
+  const cpm = impressions ? (cost / impressions) * 1000 : 0;
+  const cvr = clicks ? purchases / clicks : 0;
+  const cpa = purchases ? cost / purchases : 0;
+  const roas = cost ? revenue / cost : 0;
+  return { cost, impressions, clicks, purchases, revenue, ctr, cpc, cpm, cvr, cpa, roas };
+}
+
+function monthLabelKo(ym) {
+  if (!ym) return "-";
+  const [y, m] = ym.split("-");
+  return `${y.slice(2)}년 ${parseInt(m, 10)}월`;
+}
+
+// 월 선택 셀렉트 채우기
+function populateMonthCloseSelect() {
+  const sel = document.querySelector("#monthCloseSelect");
+  if (!sel) return;
+  const months = monthCloseAllMonths();
+  monthCloseEnsureMonth();
+  sel.innerHTML = months.map((ym) => `<option value="${ym}"${ym === state.monthClose.month ? " selected" : ""}>${monthLabelKo(ym)}</option>`).join("");
+}
+
+// 1. 광고 운영 총계
+function renderMcSummary(ym) {
+  const rows = monthCloseMonthRows(ym);
+  const totals = monthCloseAggregate(rows);
+
+  // 카테고리별 집계
+  const byCat = { branding: [], "perf-default": [], "perf-naver": [], "perf-other": [] };
+  for (const r of rows) byCat[monthCloseCategory(r)].push(r);
+  const catTotals = {};
+  for (const key of Object.keys(byCat)) catTotals[key] = monthCloseAggregate(byCat[key]);
+
+  // Eyebrow
+  document.querySelector("#mcSummaryEyebrow").textContent = `${monthLabelKo(ym)} 광고 운영 총계`;
+
+  // KPI 좌측
+  const kpiHtml = `
+    <div class="mc-kpi-row"><span class="mc-kpi-label">총 광고비</span><strong>${formatNumber(totals.cost)}</strong><em>원 (-VAT, +FEE)</em></div>
+    <div class="mc-kpi-row"><span class="mc-kpi-label">총 클릭수</span><strong>${formatNumber(totals.clicks)}</strong><em>회</em></div>
+    <div class="mc-kpi-row"><span class="mc-kpi-label">CPC</span><strong>${formatNumber(Math.round(totals.cpc))}</strong><em>원</em></div>
+    <div class="mc-kpi-row"><span class="mc-kpi-label">CTR</span><strong>${(totals.ctr * 100).toFixed(2)}%</strong></div>
+    <div class="mc-kpi-row"><span class="mc-kpi-label">CPM</span><strong>${formatNumber(Math.round(totals.cpm))}</strong><em>원</em></div>
+  `;
+  document.querySelector("#mcSummaryKpis").innerHTML = kpiHtml;
+
+  // 도넛 3개 (노출수 / 클릭수 / 비용)
+  const donut = (title, metric, fmt) => {
+    const segs = Object.entries(catTotals)
+      .map(([key, v]) => ({ key, label: MC_CATEGORIES[key].label, color: MC_CATEGORIES[key].color, value: v[metric] || 0 }))
+      .filter((s) => s.value > 0);
+    const total = segs.reduce((a, b) => a + b.value, 0) || 1;
+    let acc = 0;
+    const radius = 60, inner = 36, cx = 90, cy = 90;
+    const arcs = segs.map((s) => {
+      const start = (acc / total) * Math.PI * 2 - Math.PI / 2;
+      acc += s.value;
+      const end = (acc / total) * Math.PI * 2 - Math.PI / 2;
+      const large = end - start > Math.PI ? 1 : 0;
+      const x1 = cx + radius * Math.cos(start), y1 = cy + radius * Math.sin(start);
+      const x2 = cx + radius * Math.cos(end),   y2 = cy + radius * Math.sin(end);
+      const ix1 = cx + inner * Math.cos(end),   iy1 = cy + inner * Math.sin(end);
+      const ix2 = cx + inner * Math.cos(start), iy2 = cy + inner * Math.sin(start);
+      return `<path d="M${x1} ${y1} A${radius} ${radius} 0 ${large} 1 ${x2} ${y2} L${ix1} ${iy1} A${inner} ${inner} 0 ${large} 0 ${ix2} ${iy2} Z" fill="${s.color}"><title>${s.label}: ${fmt(s.value)}</title></path>`;
+    }).join("");
+    const valuesLabels = segs.map((s) => `<li><span class="mc-donut-dot" style="background:${s.color}"></span>${fmt(s.value)}</li>`).join("");
+    return `<div class="mc-donut-card">
+      <div class="mc-donut-title">${title}</div>
+      <svg viewBox="0 0 180 180" class="mc-donut-svg">${arcs}</svg>
+      <ul class="mc-donut-values">${valuesLabels}</ul>
+    </div>`;
+  };
+  document.querySelector("#mcSummaryDonuts").innerHTML =
+    donut("노출수", "impressions", formatNumber) +
+    donut("클릭수", "clicks", formatNumber) +
+    donut("비용",   "cost",       formatNumber);
+
+  // 범례
+  document.querySelector("#mcSummaryLegend").innerHTML = Object.entries(MC_CATEGORIES)
+    .map(([_, v]) => `<span class="mc-legend-item"><span class="mc-legend-dot" style="background:${v.color}"></span>${v.label}</span>`).join("");
+}
+
+// 2. KPI 달성률 (목표는 임시 하드코딩 - 추후 사용자 입력으로 변경 가능)
+const MC_KPI_TARGETS = {
+  cost: 257_601_332,
+  saRoas: 11.09,    // 1109%
+  daRoas: 5.48,     // 548%
+  daClicks: 2_949_506,
+};
+
+function renderMcKpi(ym) {
+  const rows = monthCloseMonthRows(ym);
+  const totals = monthCloseAggregate(rows);
+
+  // 매체 SA/DA 분류 (네이버 검색광고 = SA, 그 외 광고 = DA로 단순 분류)
+  const saRows = rows.filter((r) => String(r.media || "").includes("검색"));
+  const daRows = rows.filter((r) => !String(r.media || "").includes("검색"));
+  const sa = monthCloseAggregate(saRows);
+  const da = monthCloseAggregate(daRows);
+
+  const items = [
+    { key: "광고비", target: MC_KPI_TARGETS.cost, actual: totals.cost, fmt: formatNumber },
+    { key: "SA ROAS", target: MC_KPI_TARGETS.saRoas, actual: sa.roas, fmt: (v) => `${Math.round(v * 100)}%` },
+    { key: "DA ROAS", target: MC_KPI_TARGETS.daRoas, actual: da.roas, fmt: (v) => `${Math.round(v * 100)}%` },
+    { key: "DA 클릭수", target: MC_KPI_TARGETS.daClicks, actual: da.clicks, fmt: formatNumber },
+  ];
+
+  document.querySelector("#mcKpiEyebrow").textContent = `${monthLabelKo(ym)} 광고 KPI 달성률`;
+
+  const chartsHtml = items.map((it) => {
+    const max = Math.max(it.target, it.actual) || 1;
+    const tH = (it.target / max) * 100;
+    const aH = (it.actual / max) * 100;
+    return `<div class="mc-kpi-chart">
+      <div class="mc-kpi-chart-label">${it.key}</div>
+      <div class="mc-kpi-bars">
+        <div class="mc-kpi-bar-col">
+          <span class="mc-kpi-bar-value">${it.fmt(it.target)}</span>
+          <div class="mc-kpi-bar mc-kpi-bar-target" style="height:${tH}%"></div>
+          <span class="mc-kpi-bar-axis">목표</span>
+        </div>
+        <div class="mc-kpi-bar-col">
+          <span class="mc-kpi-bar-value">${it.fmt(it.actual)}</span>
+          <div class="mc-kpi-bar mc-kpi-bar-actual" style="height:${aH}%"></div>
+          <span class="mc-kpi-bar-axis">달성</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  document.querySelector("#mcKpiCharts").innerHTML = chartsHtml;
+
+  // 표
+  const rate = (a, t) => t ? (a / t) : 0;
+  const tableHtml = `
+    <thead><tr><th></th><th>목표</th><th>달성</th><th>달성률</th></tr></thead>
+    <tbody>
+      ${items.map((it) => {
+        const r = rate(it.actual, it.target);
+        const cls = r >= 1 ? "mc-rate-ok" : "mc-rate-warn";
+        return `<tr>
+          <td><strong>${it.key}</strong></td>
+          <td>${it.fmt(it.target)}</td>
+          <td>${it.fmt(it.actual)}</td>
+          <td class="${cls}">${Math.round(r * 100)}%</td>
+        </tr>`;
+      }).join("")}
+    </tbody>`;
+  document.querySelector("#mcKpiTable").innerHTML = tableHtml;
+}
+
+// 3. 광고비 소진 예상 - 프로모션별 채널 테이블
+function renderMcChannels(ym) {
+  const rows = monthCloseMonthRows(ym);
+
+  document.querySelector("#mcChannelsEyebrow").textContent = `${monthLabelKo(ym)} 전체 광고비 소진 예상`;
+
+  // 카테고리 > 매체 > 상품(product/channel) 으로 트리 형성
+  const tree = {};
+  for (const r of rows) {
+    const cat = monthCloseCategory(r);
+    const media = r.media || "기타";
+    const product = r.channel || r.creativeTheme || "-";
+    tree[cat] = tree[cat] || {};
+    tree[cat][media] = tree[cat][media] || {};
+    if (!tree[cat][media][product]) tree[cat][media][product] = { cost: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0 };
+    const slot = tree[cat][media][product];
+    slot.cost += r.cost || 0;
+    slot.impressions += r.impressions || 0;
+    slot.clicks += r.clicks || 0;
+    slot.purchases += r.purchases || 0;
+    slot.revenue += r.revenue || 0;
+  }
+
+  const head = `<thead><tr>
+    <th>구분</th><th>매체</th><th>상품</th>
+    <th>노출수</th><th>클릭수</th><th>총비용(-VAT,+FEE)</th>
+    <th>전환수</th><th>매출</th><th>CTR</th><th>CPC</th><th>CPM</th><th>CVR</th><th>CPA</th><th>ROAS</th>
+  </tr></thead>`;
+
+  let bodyRows = "";
+  const catOrder = ["branding", "perf-default", "perf-naver", "perf-other"];
+  const groupTotals = {};
+  for (const cat of catOrder) {
+    if (!tree[cat]) continue;
+    const catLabel = MC_CATEGORIES[cat].label;
+    let catFirst = true;
+    let catCost = 0, catImp = 0, catClk = 0, catPur = 0, catRev = 0;
+    const mediaEntries = Object.entries(tree[cat]);
+    for (const [media, products] of mediaEntries) {
+      const prodEntries = Object.entries(products);
+      let mediaFirst = true;
+      for (const [product, m] of prodEntries) {
+        const ctr = m.impressions ? m.clicks / m.impressions : 0;
+        const cpc = m.clicks ? m.cost / m.clicks : 0;
+        const cpm = m.impressions ? (m.cost / m.impressions) * 1000 : 0;
+        const cvr = m.clicks ? m.purchases / m.clicks : 0;
+        const cpa = m.purchases ? m.cost / m.purchases : 0;
+        const roas = m.cost ? m.revenue / m.cost : 0;
+        catCost += m.cost; catImp += m.impressions; catClk += m.clicks; catPur += m.purchases; catRev += m.revenue;
+        bodyRows += `<tr>
+          <td>${catFirst ? `<strong>${catLabel}</strong>` : ""}</td>
+          <td>${mediaFirst ? escapeHtml(media) : ""}</td>
+          <td>${escapeHtml(product)}</td>
+          <td>${formatNumber(m.impressions)}</td>
+          <td>${formatNumber(m.clicks)}</td>
+          <td>${formatNumber(Math.round(m.cost))}</td>
+          <td>${m.purchases ? formatNumber(m.purchases) : ""}</td>
+          <td>${m.revenue ? formatNumber(Math.round(m.revenue)) : ""}</td>
+          <td>${(ctr * 100).toFixed(2)}%</td>
+          <td>${cpc ? Math.round(cpc).toLocaleString("ko-KR") : ""}</td>
+          <td>${cpm ? Math.round(cpm).toLocaleString("ko-KR") : ""}</td>
+          <td>${cvr ? (cvr * 100).toFixed(2) + "%" : ""}</td>
+          <td>${cpa ? Math.round(cpa).toLocaleString("ko-KR") : ""}</td>
+          <td>${roas ? Math.round(roas * 100) + "%" : ""}</td>
+        </tr>`;
+        catFirst = false;
+        mediaFirst = false;
+      }
+    }
+    groupTotals[cat] = { cost: catCost, impressions: catImp, clicks: catClk, purchases: catPur, revenue: catRev };
+    // 카테고리 합계
+    const catCtr = catImp ? catClk / catImp : 0;
+    const catCpc = catClk ? catCost / catClk : 0;
+    const catCpm = catImp ? (catCost / catImp) * 1000 : 0;
+    const catCvr = catClk ? catPur / catClk : 0;
+    const catCpa = catPur ? catCost / catPur : 0;
+    const catRoas = catCost ? catRev / catCost : 0;
+    bodyRows += `<tr class="mc-row-subtotal">
+      <td colspan="3"><strong>${catLabel} 합계</strong></td>
+      <td>${formatNumber(catImp)}</td>
+      <td>${formatNumber(catClk)}</td>
+      <td>${formatNumber(Math.round(catCost))}</td>
+      <td>${catPur ? formatNumber(catPur) : ""}</td>
+      <td>${catRev ? formatNumber(Math.round(catRev)) : ""}</td>
+      <td>${(catCtr * 100).toFixed(2)}%</td>
+      <td>${catCpc ? Math.round(catCpc).toLocaleString("ko-KR") : ""}</td>
+      <td>${catCpm ? Math.round(catCpm).toLocaleString("ko-KR") : ""}</td>
+      <td>${catCvr ? (catCvr * 100).toFixed(2) + "%" : ""}</td>
+      <td>${catCpa ? Math.round(catCpa).toLocaleString("ko-KR") : ""}</td>
+      <td>${catRoas ? Math.round(catRoas * 100) + "%" : ""}</td>
+    </tr>`;
+  }
+
+  // 총 합계
+  const t = monthCloseAggregate(rows);
+  bodyRows += `<tr class="mc-row-grandtotal">
+    <td colspan="3"><strong>총 합계</strong></td>
+    <td>${formatNumber(t.impressions)}</td>
+    <td>${formatNumber(t.clicks)}</td>
+    <td>${formatNumber(Math.round(t.cost))}</td>
+    <td>${formatNumber(t.purchases)}</td>
+    <td>${formatNumber(Math.round(t.revenue))}</td>
+    <td>${(t.ctr * 100).toFixed(2)}%</td>
+    <td>${Math.round(t.cpc).toLocaleString("ko-KR")}</td>
+    <td>${Math.round(t.cpm).toLocaleString("ko-KR")}</td>
+    <td>${(t.cvr * 100).toFixed(2)}%</td>
+    <td>${Math.round(t.cpa).toLocaleString("ko-KR")}</td>
+    <td>${Math.round(t.roas * 100)}%</td>
+  </tr>`;
+
+  document.querySelector("#mcChannelsTable").innerHTML = head + `<tbody>${bodyRows}</tbody>`;
+}
+
+// 4. YoY 비교
+function renderMcYoy(ym) {
+  const [y, m] = ym.split("-");
+  const prevYm = `${parseInt(y, 10) - 1}-${m}`;
+  const currRows = monthCloseMonthRows(ym);
+  const prevRows = monthCloseMonthRows(prevYm);
+  const curr = monthCloseAggregate(currRows);
+  const prev = monthCloseAggregate(prevRows);
+
+  document.querySelector("#mcYoyTitle").textContent = `${monthLabelKo(prevYm)} vs ${monthLabelKo(ym)} 성과 비교`;
+
+  renderMcCompareSection(
+    [{ label: monthLabelKo(prevYm), data: prev }, { label: monthLabelKo(ym), data: curr }],
+    document.querySelector("#mcYoyCharts"),
+    document.querySelector("#mcYoyTable"),
+  );
+}
+
+// 5. MoM 비교 (3개월)
+function renderMcMom(ym) {
+  const [y, m] = ym.split("-");
+  const baseDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+  const months = [];
+  for (let i = 2; i >= 0; i--) {
+    const d = new Date(baseDate.getFullYear(), baseDate.getMonth() - i, 1);
+    const ym2 = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    months.push({ ym: ym2, label: monthLabelKo(ym2), data: monthCloseAggregate(monthCloseMonthRows(ym2)) });
+  }
+
+  document.querySelector("#mcMomTitle").textContent = `${months[0].label} ~ ${months[2].label} 성과 추이`;
+
+  renderMcCompareSection(months.map((x) => ({ label: x.label, data: x.data })), document.querySelector("#mcMomCharts"), document.querySelector("#mcMomTable"));
+}
+
+// 공통: YoY/MoM 차트 + 표 렌더
+function renderMcCompareSection(items, chartsEl, tableEl) {
+  const metrics = [
+    { key: "cpm", label: "CPM", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "ctr", label: "CTR", fmt: (v) => (v * 100).toFixed(2) + "%" },
+    { key: "cpc", label: "CPC", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "cost", label: "광고비", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "cvr", label: "CVR", fmt: (v) => (v * 100).toFixed(2) + "%" },
+    { key: "roas", label: "ROAS", fmt: (v) => Math.round(v * 100) + "%" },
+  ];
+  chartsEl.innerHTML = metrics.map((mt) => {
+    const values = items.map((it) => it.data[mt.key] || 0);
+    const max = Math.max(...values) || 1;
+    const bars = items.map((it, i) => {
+      const v = values[i];
+      const h = (v / max) * 100;
+      return `<div class="mc-cmp-bar-col">
+        <span class="mc-cmp-bar-value">${mt.fmt(v)}</span>
+        <div class="mc-cmp-bar" style="height:${h}%"></div>
+        <span class="mc-cmp-bar-axis">${it.label}</span>
+      </div>`;
+    }).join("");
+    return `<div class="mc-cmp-chart">
+      <div class="mc-cmp-chart-label">${mt.label}</div>
+      <div class="mc-cmp-bars">${bars}</div>
+    </div>`;
+  }).join("");
+
+  // 표
+  const allMetricCols = [
+    { key: "impressions", label: "노출", fmt: formatNumber },
+    { key: "clicks", label: "클릭", fmt: formatNumber },
+    { key: "cost", label: "광고비(-VAT,+FEE)", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "purchases", label: "매체 구매", fmt: formatNumber },
+    { key: "revenue", label: "매체 매출", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "ctr", label: "CTR", fmt: (v) => (v * 100).toFixed(2) + "%" },
+    { key: "cpc", label: "CPC", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "cpm", label: "CPM", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "cvr", label: "CVR", fmt: (v) => (v * 100).toFixed(2) + "%" },
+    { key: "cpa", label: "CPA", fmt: (v) => formatNumber(Math.round(v)) },
+    { key: "roas", label: "ROAS", fmt: (v) => Math.round(v * 100) + "%" },
+  ];
+  const head = `<thead><tr><th>구분</th>${allMetricCols.map((c) => `<th>${c.label}</th>`).join("")}</tr></thead>`;
+  const body = `<tbody>
+    ${items.map((it) => `<tr><td><strong>${it.label}</strong></td>${allMetricCols.map((c) => `<td>${c.fmt(it.data[c.key] || 0)}</td>`).join("")}</tr>`).join("")}
+    ${items.length >= 2 ? items.slice(1).map((it, idx) => {
+      const base = items[idx];
+      return `<tr class="mc-row-rate"><td><strong>${base.label} 대비 증감률</strong></td>${allMetricCols.map((c) => {
+        const a = base.data[c.key] || 0;
+        const b = it.data[c.key] || 0;
+        if (!a) return `<td>-</td>`;
+        const diff = (b - a) / a;
+        const arrow = diff >= 0 ? "▲" : "▼";
+        const cls = diff >= 0 ? "mc-diff-up" : "mc-diff-down";
+        return `<td class="${cls}">${arrow} ${Math.abs(diff * 100).toFixed(0)}%</td>`;
+      }).join("")}</tr>`;
+    }).join("") : ""}
+  </tbody>`;
+  tableEl.innerHTML = head + body;
+}
+
+// 월 예상 마감 view 전체 렌더
+function renderMonthClose() {
+  populateMonthCloseSelect();
+  const ym = monthCloseEnsureMonth();
+  if (!ym) return;
+  const sub = state.monthClose.subTab || "summary";
+  // 서브탭 활성화
+  document.querySelectorAll(".month-close-tab").forEach((b) => b.classList.toggle("is-active", b.dataset.mcTab === sub));
+  document.querySelectorAll(".mc-page").forEach((p) => p.classList.toggle("is-active", p.dataset.mcPage === sub));
+
+  if (sub === "summary") renderMcSummary(ym);
+  else if (sub === "kpi") renderMcKpi(ym);
+  else if (sub === "channels") renderMcChannels(ym);
+  else if (sub === "yoy") renderMcYoy(ym);
+  else if (sub === "mom") renderMcMom(ym);
+}
+
 function renderAll() {
   const rows = filteredRecords();
   const brandRows = state.currentView === "brand" ? getBrandRows() : null;
@@ -4693,6 +5332,8 @@ function renderAll() {
     renderKeywordReport();
   } else if (state.currentView === "brand") {
     renderBrandView(brandRows);
+  } else if (state.currentView === "monthClose") {
+    renderMonthClose();
   }
   renderFilterChips();
 }
@@ -4814,12 +5455,26 @@ function bindTableOverflowTitles() {
 function setView(view) {
   const previousView = state.currentView;
   saveActiveDateProfile(previousView);
+
+  // 이전 view의 매체 선택값 저장
+  if (state.viewMedia && previousView) {
+    state.viewMedia[previousView] = state.homeMedia;
+  }
+
   state.currentView = view;
+
+  // 새 view의 매체 선택값 복원
+  if (state.viewMedia) {
+    state.homeMedia = state.viewMedia[view] ?? "all";
+  }
+
   if (view === "keyword" && state.homeMedia !== "all" && !keywordMediaOrder.includes(state.homeMedia)) {
     state.homeMedia = "all";
+    state.viewMedia[view] = "all";
   }
   if (view === "brand") {
     state.homeMedia = "all";
+    state.viewMedia[view] = "all";
     state.filters.media = "all";
     pendingFilters.media = "all";
   }
@@ -4907,11 +5562,33 @@ function bindControls() {
   document.querySelector("#resetFiltersBtn").addEventListener("click", resetFilterDrawer);
   document.querySelector("#exportCsvBtn").addEventListener("click", exportCsv);
 
+  // 프로모션 칩 상세 패널 닫기
+  document.querySelector("#promoChipDetailClose")?.addEventListener("click", () => {
+    activePromoChipDetail = null;
+    renderAll();
+  });
+
+  // 월 예상 마감: 월 선택 변경
+  document.querySelector("#monthCloseSelect")?.addEventListener("change", (e) => {
+    state.monthClose.month = e.target.value;
+    renderMonthClose();
+  });
+
+  // 월 예상 마감: 서브탭 클릭
+  document.querySelector("#monthCloseTabs")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".month-close-tab");
+    if (!btn) return;
+    state.monthClose.subTab = btn.dataset.mcTab;
+    renderMonthClose();
+  });
+
   document.querySelector("#mediaQuickFilter")?.addEventListener("click", (event) => {
     const button = event.target.closest(".media-quick-btn");
     if (!button) return;
     const nextMedia = button.dataset.homeMedia || "all";
     state.homeMedia = state.currentView === "keyword" && state.homeMedia === nextMedia ? "all" : nextMedia;
+    // 현재 view의 매체 선택값도 동기화
+    if (state.viewMedia) state.viewMedia[state.currentView] = state.homeMedia;
     clearDrawerMediaFilter();
     renderMediaQuickFilter();
     syncHomeMediaControls();
@@ -4976,6 +5653,7 @@ function bindControls() {
   document.querySelectorAll(".summary-media-button").forEach((button) => {
     button.addEventListener("click", () => {
       state.homeMedia = button.dataset.homeMedia;
+      if (state.viewMedia) state.viewMedia.home = state.homeMedia;
       setView("home");
       syncHomeMediaControls();
       renderAll();

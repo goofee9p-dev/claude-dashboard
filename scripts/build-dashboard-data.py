@@ -499,13 +499,15 @@ def aggregate_compact_records(records):
         if key not in bucket:
             bucket[key] = {dim: row.get(dim, "") for dim in dimensions}
             bucket[key]["creative"] = creative_key
-            bucket[key]["keyword"] = ""
             bucket[key].update(empty_metrics())
-            bucket[key]["hasHour"] = False
-            bucket[key]["hour"] = None
-            bucket[key]["hourLabel"] = "일 단위"
         add_metrics(bucket[key], row)
-    return list(bucket.values())
+    # 0인 메트릭만 제거 (JSON 크기 감소, 차원은 유지)
+    metric_keys = {"cost", "impressions", "clicks", "purchases", "revenue"}
+    result = []
+    for r in bucket.values():
+        compact = {k: v for k, v in r.items() if not (k in metric_keys and v == 0)}
+        result.append(compact)
+    return result
 
 
 def aggregate_keyword_records(records):
@@ -529,7 +531,13 @@ def aggregate_keyword_records(records):
             bucket[key]["channel"] = row.get("channel", "키워드")
             bucket[key].update(empty_metrics())
         add_metrics(bucket[key], row)
-    return list(bucket.values())
+    # 0인 메트릭만 제거 (JSON 크기 감소)
+    metric_keys = {"cost", "impressions", "clicks", "purchases", "revenue"}
+    result = []
+    for r in bucket.values():
+        compact = {k: v for k, v in r.items() if not (k in metric_keys and v == 0)}
+        result.append(compact)
+    return result
 
 
 if __name__ == "__main__":
