@@ -3555,16 +3555,7 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
     return;
   }
 
-  const ctrRows = cards.filter((c) => c.metrics.impressions > 0);
-  const revenueRows = cards.filter((c) => c.metrics.revenue > 0 || c.metrics.cost > 0 || c.metrics.clicks > 0);
-  const highlights = [
-    { label: "CTR Best", tone: "good", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => b.metrics.ctr - a.metrics.ctr)[0] },
-    { label: "CTR Worst", tone: "bad", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => a.metrics.ctr - b.metrics.ctr)[0] },
-    { label: "매출 Best", tone: "good", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0] },
-    { label: "매출 Worst", tone: "bad", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => a.metrics.revenue - b.metrics.revenue)[0] },
-  ].filter((entry) => entry.item);
-
-  wrap.innerHTML = highlights.map(({ label, tone, metric, value, item }) => {
+  const renderHighlightCard = ({ label, tone, metric, value, item }) => {
     const imgSrc = item.file ? `./${item.file}` : "";
     const caption = `${item.name}${item.device ? ` (${item.device})` : ""}`;
     const previewAttrs = imgSrc
@@ -3581,7 +3572,36 @@ function renderBrandCreativeHighlights(brandRows, creatives) {
         <small>${escapeHtml(item.device)} · ${escapeHtml(metric)} · 클릭 ${escapeHtml(formatNumber(item.metrics.clicks))}</small>
       </span>
     </button>`;
-  }).join("");
+  };
+
+  const renderDeviceGroup = ({ key, label }) => {
+    const deviceCards = cards.filter((c) => c.device === key);
+    const ctrRows = deviceCards.filter((c) => c.metrics.impressions > 0);
+    const revenueRows = deviceCards.filter((c) => c.metrics.revenue > 0 || c.metrics.cost > 0 || c.metrics.clicks > 0);
+    const highlights = [
+      { label: "CTR Best", tone: "good", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => b.metrics.ctr - a.metrics.ctr)[0] },
+      { label: "CTR Worst", tone: "bad", metric: "CTR", value: (c) => formatPercent(c.metrics.ctr), item: [...ctrRows].sort((a, b) => a.metrics.ctr - b.metrics.ctr)[0] },
+      { label: "매출 Best", tone: "good", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0] },
+      { label: "매출 Worst", tone: "bad", metric: "매출", value: (c) => formatMoney(c.metrics.revenue), item: [...revenueRows].sort((a, b) => a.metrics.revenue - b.metrics.revenue)[0] },
+    ].filter((entry) => entry.item);
+    const total = sumBrandMetrics(brandRows.filter((row) => brandDeviceTag(row) === key));
+    const body = highlights.length
+      ? highlights.map(renderHighlightCard).join("")
+      : `<div class="brand-highlight-empty">표시할 ${escapeHtml(label)} 소재 성과가 없습니다.</div>`;
+
+    return `<section class="brand-highlight-device-group">
+      <div class="brand-highlight-device-head">
+        <span class="brand-device-pill ${key.toLowerCase()}">${escapeHtml(label)}</span>
+        <small>소재 ${escapeHtml(formatNumber(deviceCards.length))}개 · 클릭 ${escapeHtml(formatNumber(total.clicks))} · 매출 ${escapeHtml(formatMoney(total.revenue))}</small>
+      </div>
+      <div class="brand-highlight-device-grid">${body}</div>
+    </section>`;
+  };
+
+  wrap.innerHTML = [
+    { key: "PC", label: "PC" },
+    { key: "MO", label: "MO" },
+  ].map(renderDeviceGroup).join("");
 
   wrap.querySelectorAll(".brand-highlight-card[data-preview-img]").forEach((el) => {
     el.addEventListener("click", (event) => {
