@@ -4525,7 +4525,48 @@ function syncHomePromotionControls() {
   if (allBtn) allBtn.classList.toggle("is-active", state.homePromotion === "all");
 }
 
+const DASHBOARD_ACCESS_PASSWORD = "zinus010";
+const DASHBOARD_AUTH_KEY = "zinus-dashboard-auth";
+
+function setupPasswordGate() {
+  const gate = document.querySelector("#authGate");
+  const form = document.querySelector("#authForm");
+  const input = document.querySelector("#authPassword");
+  const error = document.querySelector("#authError");
+  if (!gate || !form || !input) return Promise.resolve();
+
+  const unlock = () => {
+    sessionStorage.setItem(DASHBOARD_AUTH_KEY, "ok");
+    document.documentElement.classList.remove("auth-locked");
+    gate.setAttribute("aria-hidden", "true");
+  };
+
+  if (sessionStorage.getItem(DASHBOARD_AUTH_KEY) === "ok") {
+    unlock();
+    return Promise.resolve();
+  }
+
+  gate.setAttribute("aria-hidden", "false");
+  window.setTimeout(() => input.focus(), 0);
+
+  return new Promise((resolve) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (input.value === DASHBOARD_ACCESS_PASSWORD) {
+        unlock();
+        resolve();
+        return;
+      }
+      if (error) error.textContent = "비밀번호가 맞지 않습니다.";
+      input.value = "";
+      input.focus();
+    });
+  });
+}
+
 async function init() {
+  await setupPasswordGate();
+
   if (window.DASHBOARD_DATA) {
     state.data = window.DASHBOARD_DATA;
   } else {

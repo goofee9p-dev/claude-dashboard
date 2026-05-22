@@ -4,12 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>광고 성과 대시보드</title>
+    <script>
+      if (sessionStorage.getItem("zinus-dashboard-auth") !== "ok") {
+        document.documentElement.classList.add("auth-locked");
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="authGate" class="auth-gate" aria-hidden="true">
+      <form id="authForm" class="auth-card" autocomplete="off">
+        <span class="auth-eyebrow">Zinus Media Dashboard</span>
+        <h1>비밀번호 입력</h1>
+        <p>대시보드 접근을 위해 비밀번호를 입력하세요.</p>
+        <label for="authPassword">비밀번호</label>
+        <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Password" />
+        <small id="authError" class="auth-error" role="alert"></small>
+        <button type="submit">확인</button>
+      </form>
+    </div>
+
     <aside class="app-sidebar">
       <div class="sidebar-title">
         <strong>Zinus</strong>
