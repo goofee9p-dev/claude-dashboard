@@ -4294,9 +4294,12 @@ function renderCreativeCalendar(creatives) {
   });
 
   // 마우스 따라다니는 "소재 보기" 버튼
+  let lastHoveredEvent = null;
+
   container.addEventListener("mouseenter", (e) => {
     const target = e.target.closest(".cal-event[data-calendar-preview]");
     if (!target) return;
+    lastHoveredEvent = target;
 
     if (!floatingPreviewBtn) {
       floatingPreviewBtn = document.createElement("button");
@@ -4315,36 +4318,39 @@ function renderCreativeCalendar(creatives) {
   container.addEventListener("mousemove", (e) => {
     const target = e.target.closest(".cal-event[data-calendar-preview]");
     if (!target || !floatingPreviewBtn) return;
+    lastHoveredEvent = target;
 
     // 마우스 위치에서 약간 오프셋하여 버튼 위치 설정
     floatingPreviewBtn.style.left = (e.clientX + 8) + "px";
     floatingPreviewBtn.style.top = (e.clientY - 8) + "px";
   }, true);
 
-  // 떠있는 버튼 클릭으로 미리보기 표시
+  // 클릭 → 미리보기 열기/닫기
   document.addEventListener("click", (e) => {
+    // 1. 플로팅 "소재 보기" 버튼 클릭 → 마지막 hover된 cal-event 열기
     if (e.target === floatingPreviewBtn) {
-      const target = e.target.closest?.(".cal-event[data-calendar-preview]");
-      if (!target) {
-        // 마우스 위치 근처의 cal-event 찾기
-        const rect = container.getBoundingClientRect();
-        const relX = e.clientX - rect.left;
-        const relY = e.clientY - rect.top;
-        const el = document.elementFromPoint(e.clientX, e.clientY - 20);
-        const calEvent = el?.closest(".cal-event[data-calendar-preview]");
-        if (!calEvent) return;
-        toggleCalendarPreview({ target: calEvent });
-      } else {
-        toggleCalendarPreview(e);
+      if (lastHoveredEvent && container.contains(lastHoveredEvent)) {
+        toggleCalendarPreview({ target: lastHoveredEvent });
       }
-    } else if (activePreviewTarget) {
-      // 팝오버 또는 달력 내부가 아닌 곳을 클릭하면 닫기
-      if (!e.target.closest(".cal-event[data-calendar-preview]") &&
-          !e.target.closest(".cal-event-preview-popover") &&
-          e.target !== floatingPreviewBtn) {
-        closeCalendarPreview(activePreviewTarget);
-        activePreviewTarget = null;
-      }
+      return;
+    }
+
+    // 2. cal-event 직접 클릭 → 토글
+    const directTarget = e.target.closest(".cal-event[data-calendar-preview]");
+    if (directTarget && container.contains(directTarget)) {
+      toggleCalendarPreview({ target: directTarget });
+      return;
+    }
+
+    // 3. 팝오버 내부 클릭 → 무시 (계속 열어둠)
+    if (e.target.closest(".cal-event-preview-popover")) {
+      return;
+    }
+
+    // 4. 그 외 영역 클릭 → 활성 미리보기 닫기
+    if (activePreviewTarget) {
+      closeCalendarPreview(activePreviewTarget);
+      activePreviewTarget = null;
     }
   }, true);
 
