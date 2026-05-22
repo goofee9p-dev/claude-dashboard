@@ -3144,11 +3144,42 @@ tbody tr:hover {
 }
 .cal-preview-title {
   margin-bottom: 8px;
+  padding-right: 32px;
   color: var(--strong);
   font-size: 12px;
   font-weight: 900;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 미리보기 닫기 (X) 버튼 */
+.cal-preview-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(60, 75, 90, 0.08);
+  color: var(--strong);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease;
+  z-index: 2;
+}
+.cal-preview-close:hover {
+  background: rgba(60, 75, 90, 0.18);
+  color: #000;
+}
+.cal-preview-close:active {
+  background: rgba(60, 75, 90, 0.28);
 }
 .cal-preview-grid {
   display: grid;

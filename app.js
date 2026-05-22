@@ -4204,6 +4204,7 @@ function renderCreativeCalendar(creatives) {
         const devTag  = ev.devices.map(d => `<span class="cal-dev-tag">${d}</span>`).join("");
         const previewItems = ev.creatives;
         const inlinePreview = previewItems.length ? `<div class="cal-event-preview-popover" aria-hidden="true">
+          <button type="button" class="cal-preview-close" aria-label="닫기">×</button>
           <div class="cal-preview-title">${escapeHtml(label)}</div>
           <div class="cal-preview-grid">
             ${previewItems.map((item) => `
@@ -4327,6 +4328,15 @@ function renderCreativeCalendar(creatives) {
 
   // 클릭 → 미리보기 열기/닫기
   document.addEventListener("click", (e) => {
+    // 0. 미리보기 X(닫기) 버튼 클릭
+    if (e.target.closest(".cal-preview-close")) {
+      if (activePreviewTarget) {
+        closeCalendarPreview(activePreviewTarget);
+        activePreviewTarget = null;
+      }
+      return;
+    }
+
     // 1. 플로팅 "소재 보기" 버튼 클릭 → 마지막 hover된 cal-event 열기
     if (e.target === floatingPreviewBtn) {
       if (lastHoveredEvent && container.contains(lastHoveredEvent)) {
